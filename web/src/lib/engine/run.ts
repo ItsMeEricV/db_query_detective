@@ -206,7 +206,7 @@ function isQueryFault(err: unknown): boolean {
 
 const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 
-function metricsFromPlan(plan: unknown): ModeMetrics {
+export function metricsFromPlan(plan: unknown): ModeMetrics {
   // pg returns EXPLAIN FORMAT JSON as a parsed array; narrow at this boundary.
   const root = (plan as PgPlanRoot[] | undefined)?.[0];
   const node = root?.Plan;
@@ -226,7 +226,7 @@ function metricsFromPlan(plan: unknown): ModeMetrics {
 }
 
 /** A small starter set of measured-fact detectors. Grows over time. */
-function detectFlags(plan: unknown): ModeFlag[] {
+export function detectFlags(plan: unknown): ModeFlag[] {
   const root = (plan as PgPlanRoot[] | undefined)?.[0]?.Plan;
   if (!root) return [];
 

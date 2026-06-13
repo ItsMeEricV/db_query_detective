@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { upsertDdl } from '@/lib/ddl/ddl-service';
-import { runAnalysis, getAnalysisRun, AnalyzeValidationError } from './analyze-service';
+import type { ModeName } from '@/lib/engine/modes';
+import {
+  runAnalysis,
+  getAnalysisRun,
+  AnalyzeValidationError,
+  pickWorstMode,
+} from './analyze-service';
+import type { ModeResult } from './analyze-result';
 
 const seedSchema = async (sessionId: string) => {
   await upsertDdl({
@@ -75,5 +82,44 @@ describe('runAnalysis', () => {
     await expect(
       runAnalysis({ sessionId, query: 'SELECT no_such_column FROM orders' }, { scale: 50 }),
     ).rejects.toBeInstanceOf(AnalyzeValidationError);
+  });
+});
+
+describe('pickWorstMode', () => {
+  const result = (mode: ModeName, rootTotalCost: number, executionTimeMs: number): ModeResult => ({
+    mode,
+    rowCounts: {},
+    plan: [],
+    metrics: {
+      planningTimeMs: 0,
+      executionTimeMs,
+      rootStartupCost: 0,
+      rootTotalCost,
+      estimatedRows: 0,
+      actualRows: 0,
+    },
+    flags: [],
+  });
+
+  it('picks the highest Total Cost', () => {
+    expect(
+      pickWorstMode([
+        result('append_order', 100, 1),
+        result('shuffled', 200, 1),
+        result('high_skew', 150, 1),
+      ]),
+    ).toBe('shuffled');
+  });
+
+  it('breaks cost ties by Execution Time', () => {
+    expect(pickWorstMode([result('append_order', 200, 5), result('shuffled', 200, 9)])).toBe(
+      'shuffled',
+    );
+  });
+
+  it('keeps the first mode on a full tie', () => {
+    expect(pickWorstMode([result('append_order', 200, 5), result('shuffled', 200, 5)])).toBe(
+      'append_order',
+    );
   });
 });

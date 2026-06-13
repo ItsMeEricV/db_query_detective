@@ -115,7 +115,7 @@ export async function getAnalysisRun(runId: string): Promise<AnalyzeResult | nul
 }
 
 /** Worst plan by planner Total Cost; Execution Time breaks ties. */
-function pickWorstMode(results: ModeResult[]): ModeName {
+export function pickWorstMode(results: ModeResult[]): ModeName {
   return results.reduce((worst, r) => {
     if (r.metrics.rootTotalCost > worst.metrics.rootTotalCost) return r;
     if (

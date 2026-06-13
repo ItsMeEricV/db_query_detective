@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { parseTableDdl } from '@/lib/ddl/parse-ddl';
 import { parseQuery } from '@/lib/analyze/parse-query';
 import { deriveSeedPlan } from '@/lib/analyze/seed-plan';
 import { applicableModes } from '@/lib/analyze/applicable-modes';
-import { runModes } from './run';
+import { PgDb } from './pg-db';
+import { runModes, QueryExecutionError } from './run';
 
 // Integration: builds a throwaway schema in the local dockerized Postgres,
 // seeds it, and runs EXPLAIN ANALYZE per mode.
@@ -62,5 +63,28 @@ describe('runModes', () => {
 
     const [a, b] = await Promise.all([run(), run()]);
     expect(a[0].metrics.rootTotalCost).toBe(b[0].metrics.rootTotalCost);
+  });
+
+  it('drops the throwaway schema even when the query fails', async () => {
+    const sql = 'CREATE TABLE widgets (id bigint PRIMARY KEY, created_at timestamptz)';
+    const widgets = await parseTableDdl(sql);
+    const seedPlan = deriveSeedPlan([widgets], await parseQuery('SELECT * FROM widgets'), {
+      scale: 50,
+    });
+    // Spy through the real method (storage boundary) to confirm cleanup runs.
+    const dropSpy = vi.spyOn(PgDb.prototype, 'dropSchema');
+
+    await expect(
+      runModes({
+        createTableSql: new Map([['widgets', sql]]),
+        seedPlan,
+        query: 'SELECT no_such_col FROM widgets',
+        modes: ['append_order'],
+        seed: 1,
+      }),
+    ).rejects.toBeInstanceOf(QueryExecutionError);
+
+    expect(dropSpy).toHaveBeenCalledTimes(1);
+    dropSpy.mockRestore();
   });
 });

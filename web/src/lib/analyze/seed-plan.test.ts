@@ -76,4 +76,41 @@ describe('deriveSeedPlan', () => {
     const id = plan.tables[0].columns.find((c) => c.name === 'id')!;
     expect(id.role).toBe('ordered');
   });
+
+  it('treats a composite primary key as having no single-column PK', async () => {
+    const t = await parseTableDdl('CREATE TABLE t (a bigint, b bigint, PRIMARY KEY (a, b))');
+    const plan = deriveSeedPlan([t], await parseQuery('SELECT * FROM t'), { scale: 100 });
+    expect(plan.tables[0].primaryKey).toBeUndefined();
+    expect(plan.tables[0].columns.every((c) => c.kind.tag !== 'pk')).toBe(true);
+  });
+
+  it('handles a self-referencing foreign key without infinite recursion', async () => {
+    const emp = await parseTableDdl(
+      'CREATE TABLE employees (id bigint PRIMARY KEY, manager_id bigint REFERENCES employees (id))',
+    );
+    const plan = deriveSeedPlan([emp], await parseQuery('SELECT * FROM employees'), { scale: 100 });
+    expect(plan.tables.map((t) => t.table)).toEqual(['employees']);
+    const mgr = plan.tables[0].columns.find((c) => c.name === 'manager_id')!;
+    expect(mgr.kind).toEqual({ tag: 'fk', refTable: 'employees', refColumn: 'id' });
+  });
+
+  it('orders a 3-table FK chain parents-first and scales middle tables as parents', async () => {
+    const u = await parseTableDdl('CREATE TABLE users (id bigint PRIMARY KEY, name text)');
+    const o = await parseTableDdl(
+      'CREATE TABLE orders (id bigint PRIMARY KEY, user_id bigint REFERENCES users (id))',
+    );
+    const li = await parseTableDdl(
+      'CREATE TABLE line_items (id bigint PRIMARY KEY, order_id bigint REFERENCES orders (id))',
+    );
+    const shape = await parseQuery(
+      'SELECT * FROM line_items li JOIN orders o ON li.order_id = o.id JOIN users u ON o.user_id = u.id',
+    );
+    const plan = deriveSeedPlan([li, o, u], shape, { scale: 1000 });
+
+    expect(plan.tables.map((t) => t.table)).toEqual(['users', 'orders', 'line_items']);
+    const rows = Object.fromEntries(plan.tables.map((t) => [t.table, t.rowCount]));
+    expect(rows.line_items).toBe(1000); // leaf gets full scale
+    expect(rows.orders).toBeLessThan(1000); // parent of line_items
+    expect(rows.users).toBeLessThan(1000); // parent of orders
+  });
 });

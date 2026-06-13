@@ -24,7 +24,10 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=db_query_detective_dev
     volumes:
-      - db_query_detective_postgres_data:/var/lib/postgresql/data
+      # PG18 stores data under a version subdir, so the volume mounts at the
+      # parent /var/lib/postgresql (NOT .../data as in PG<=17) — mounting the
+      # old path makes postgres:18 refuse to start ("unused mount/volume").
+      - db_query_detective_postgres_data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s

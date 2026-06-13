@@ -1,67 +1,99 @@
 # KNOWLEDGE.md: the project glossary
 
-This file is the project's **shared-understanding document**: a glossary of domain terms plus the common understandings that keep conversations precise. When you and an agent use the same words to mean the same things, plans stop drifting.
+`db_query_detective` takes a developer's schema (DDL) and a query, manufactures
+realistic test data across several **modes**, runs real `EXPLAIN ANALYZE`
+against each, and reports structured findings. This file pins the canonical
+name for every domain concept so the code, the docs, and our conversations all
+agree.
 
-## Purpose
+It is a glossary and shared-understanding document only — the "what" lives in
+`SPEC.md`, the "where/how" in `ARCHITECTURE.md`.
 
-- Pin down the **canonical name** for every domain concept, so the codebase, the docs, and the conversation all agree.
-- Surface **ambiguity** — words that get used loosely or mean two things — and resolve it explicitly.
-- Give a new agent (or new teammate) the project's vocabulary in one read.
+## Language
 
-## What does NOT belong here
+**Engine**:
+The deterministic core that measures: seed → `ANALYZE` → `EXPLAIN ANALYZE`. It
+emits **measured facts** and never advice. Pure measurement, no judgment, no
+LLM.
+_Avoid_: analyzer, backend (too broad)
 
-KNOWLEDGE.md is a glossary, nothing else. Keep it devoid of implementation detail.
+**Mode**:
+One stress axis the query is sensitive to (`append_order`, `shuffled`,
+`skewed_range`, `high_skew`, `fan_out`). A mode reshapes the *statistical shape*
+of the seeded data (what the planner reads from `pg_stats`) using the same
+columns and cardinality — it is not a value generator. Mechanically, a mode is
+an **overlay** on the **SeedPlan**: it sets insertion order, range bias, and an
+optional skew override on the query's *axis column* for that mode. For
+multi-table joins a mode is a fixed **combination** across tables.
+_Avoid_: **scenario**, distribution, profile
 
-- **The "what"** → `SPEC.md`. **The "where/how"** → `ARCHITECTURE.md` / `AGENTS.md`. **Quirks and gotchas** → `MEMORY.md`.
-- General programming vocabulary (timeout, retry, idempotent, cache) does **not** belong here even if the project leans on it. Before adding a term, ask: is this unique to *this project's domain*, or is it general engineering vocabulary? Only the former belongs.
+**SeedPlan**:
+The derived, query-driven plan that bridges the parsed schema and the generator:
+per table (in FK-topological order — parents before children) the columns to
+generate with their distributions, the row counts, the range literal (`ctx`),
+and which column is each mode's **axis**. Built deterministically from
+(`ParsedTable[]`, parsed query) — no LLM input. Each **mode** is applied as an
+overlay on top of it.
 
-## Structure
+**Worst mode**:
+The mode whose plan is the most expensive for a given query, measured by the
+**root node's planner `Total Cost`** (machine-independent; `Execution Time`
+breaks ties — raw timing is too noisy to lead, per PG's own ANALYZE-overhead
+caveat). The mode the optimization loop pins and iterates against.
+_Avoid_: worstScenario
 
-### Language
+**Session**:
+A `session_id` (UUID) that scopes one user's **DDLs** and **analysis runs**. A
+deliberate placeholder for real auth in v1; passed as a header/param.
+_Avoid_: account, workspace
 
-Define each domain term in one or two sentences — what it **is**, not what it **does**. Be opinionated: when several words name the same concept, pick the best one and list the rest under _Avoid_.
+**DDL**:
+A developer's table definition (`CREATE TABLE`, indexes, `CREATE STATISTICS`).
+Stored per session; the API returns it *parsed* (`{table, columns}`), not just
+as raw SQL.
 
-> **Order**:
-> A confirmed request from a customer for one or more items.
-> _Avoid_: Purchase, transaction
->
-> **Customer**:
-> A person or organization that places orders.
-> _Avoid_: Client, buyer, account
+**Analysis run**:
+One invocation of `/analyze`: a query plus the engine's structured findings
+across all modes. The unit of storage and reuse.
+_Avoid_: job, report
 
-Group terms under subheadings when natural clusters emerge. A flat list is fine when everything belongs to one cohesive area.
+**Measured fact**:
+A flag the engine emits because it *observed* it (`sort_spilled_to_disk`),
+backed by a number it can re-verify. Distinct from **advice** ("add an index on
+`created_at`"), which only the LLM produces — never the engine.
 
-### Flagged ambiguities
+**Candidate index**:
+An index the engine could mechanically **enumerate** from the parsed query and
+**measure** the effect of, but never **selects** — selection is advice, the
+LLM's job. Enumeration is deferred past v1.
 
-When a term is used to mean two different things, call it out with a clear resolution.
+**Schema-per-session**:
+The isolation strategy for *disposable* analysis data: `CREATE SCHEMA s_<token>`
++ `search_path` + `DROP SCHEMA ... CASCADE`. Portable across a local Docker
+Postgres and a Neon branch; avoids Neon's low branch limits.
 
-> **"Account"** — used for both the billing relationship and the login identity.
-> Resolution: use **Customer** for the billing relationship, **User** for the login identity.
+**Target Postgres**:
+The Postgres major version the **engine** seeds and runs `EXPLAIN ANALYZE`
+against. Because plan shape varies across major versions, this must match
+production. **v1 standardizes on PG17** to match Neon (PG18 is still rolling
+out there); multi-version support is a future goal. Consequences: the local dev
+analysis database must also be PG17, and `libpg-query` is pinned to `@17.x`.
 
-### Example dialogue
+## Flagged ambiguities
 
-Write a short exchange between a dev and a domain expert that shows the terms interacting naturally and clarifies the boundaries between related concepts.
+**"Mode" vs "scenario"** — early drafts (and parts of `SPEC.md`) used
+*scenario* and *worstScenario* for the same concept. **Resolution (decided):**
+**mode** is the one canonical term everywhere — code, types, APIs, docs.
+*scenario* is retired; SPEC.md's remaining `scenario`/`worstScenario` usages are
+stale and should be renamed to `mode`/`worst mode`.
 
-> **Dev:** If a Customer cancels one item, does the whole Order die?
-> **Domain expert:** No — the Order stays open, that line item moves to Cancelled. The Invoice is only generated once the remaining items ship.
+## Example dialogue
 
-## Multiple areas of knowledge
-
-Most projects need a single `KNOWLEDGE.md` at the repo root. If the project grows into clearly separate domains, add a `KNOWLEDGE-MAP.md` at the root that lists each area, where its `KNOWLEDGE.md` lives, and how the areas relate:
-
-```md
-# Knowledge Map
-
-## Areas
-
-- [Ordering](./src/ordering/KNOWLEDGE.md) — receives and tracks customer orders
-- [Billing](./src/billing/KNOWLEDGE.md) — generates invoices and processes payments
-
-## Relationships
-
-- **Ordering → Billing**: Ordering emits `OrderPlaced` events; Billing consumes them to generate invoices
-```
-
-## Maintenance
-
-This file is kept current as the project's language is sharpened — most often during a `deep-discuss` session, which challenges plans against this glossary and writes resolved terms back here inline. When a term is renamed or retired, update it here so the glossary never lies.
+> **Dev:** When `/analyze` runs, does the engine tell me which index to add?
+> **Domain expert:** No — that's advice, and the engine only emits measured
+> facts. It can *enumerate* candidate indexes and report each one's measured
+> effect, but choosing one is the LLM's job.
+> **Dev:** And it runs the query five times?
+> **Domain expert:** Once per **mode**. Same columns and row counts each time,
+> different statistical shape. Whichever mode produces the most expensive plan
+> is the **worst mode** — that's what you'd pin and iterate on.

@@ -1,7 +1,9 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+//
+// App metadata only — sessions, stored DDLs, and analysis runs. The disposable
+// seeded analysis data lives in `s_<token>` schemas managed by the engine via
+// raw SQL, never through Prisma. See ARCHITECTURE.md ("v1 API Contracts & Storage").
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +12,46 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// A user's working context: a session_id UUID scoping their DDLs and runs.
+/// Placeholder for real auth in v1; lazily upserted on first use.
+model Session {
+  id        String        @id @default(uuid(7))
+  createdAt DateTime      @default(now())
+  ddls      Ddl[]
+  runs      AnalysisRun[]
+}
+
+/// One table's definition for a session. Addressed by table name (Option A):
+/// PUT /ddl/{tableName} upserts on (sessionId, tableName).
+model Ddl {
+  id        String   @id @default(uuid(7))
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tableName String
+  /// Raw CREATE TABLE SQL as submitted — the executable source of truth.
+  rawSql    String
+  /// Parsed structure (ParsedTable) returned by GET /ddls.
+  parsed    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, tableName])
+}
+
+/// One /analyze invocation: a query plus the engine's structured findings
+/// across all modes. Per-mode results are embedded as JSON.
+model AnalysisRun {
+  id             String   @id @default(uuid(7))
+  sessionId      String
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  query          String
+  /// Snapshot of the ParsedTable[] used, so the run stays reproducible.
+  schemaSnapshot Json
+  /// The mode with the most expensive plan (root Total Cost).
+  worstMode      String?
+  /// ModeResult[] — verbatim EXPLAIN plan + derived metrics + flags per mode.
+  results        Json
+  createdAt      DateTime @default(now())
 }

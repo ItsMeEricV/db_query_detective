@@ -116,3 +116,31 @@ export const isProduction = ENVIRONMENT === 'production';
 export const isTestEnv = env.NODE_ENV === 'test';
 export const isVitestRunning = !!env.VITEST;
 export const isTesting = isTestEnv || isVitestRunning;
+
+// =============================================================================
+// Server-only environment
+//
+// Secrets that must NEVER reach the browser bundle (no NEXT_PUBLIC_ prefix).
+// Validated lazily inside accessors — NOT at module load — so a client
+// component importing this file for the is* flags above never trips over a
+// server-only var being undefined in the browser.
+// =============================================================================
+
+const ServerEnvSchema = z.object({
+  // Postgres connection string. Local dev: the dockerized Postgres from
+  // .env.docker. Production: the Neon Postgres URL set in Vercel.
+  DATABASE_URL: z.string().min(1),
+});
+
+/**
+ * The Postgres connection string, validated. Server-only — call this from
+ * server modules (e.g. the Prisma client) rather than reading
+ * `process.env.DATABASE_URL` directly. Throws if unset.
+ */
+export function getDatabaseUrl(): string {
+  const result = ServerEnvSchema.safeParse(process.env);
+  if (!result.success) {
+    throw new Error(`Invalid server environment: ${result.error.message}`);
+  }
+  return result.data.DATABASE_URL;
+}

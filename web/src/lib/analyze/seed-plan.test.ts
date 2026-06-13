@@ -62,4 +62,11 @@ describe('deriveSeedPlan', () => {
     const status = plan.tables[0].columns.find((c) => c.name === 'status')!;
     expect(status.role).toBe('skewValue');
   });
+
+  it('injects an equality-filter literal into the column so it can match', async () => {
+    const shape = await parseQuery("SELECT * FROM orders WHERE status = 'paid'");
+    const plan = deriveSeedPlan([orders], shape, { scale: 500 });
+    const status = plan.tables[0].columns.find((c) => c.name === 'status')!;
+    expect(status.injectValues).toEqual(['paid']);
+  });
 });

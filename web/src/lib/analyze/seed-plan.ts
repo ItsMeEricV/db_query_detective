@@ -58,6 +58,14 @@ function buildTablePlan(
   const fanOutFk = pickFanOutFk(pt, shape);
   const skewValue = pickSkewValue(pt.table, shape, orderedAxis, fanOutFk);
 
+  // Literals from `col = <literal>` predicates, so those predicates match rows.
+  const eqLiterals = new Map<string, string[]>();
+  for (const f of shape.filters) {
+    if (f.table === pt.table && f.op === '=') {
+      eqLiterals.set(f.column, [...(eqLiterals.get(f.column) ?? []), f.literal]);
+    }
+  }
+
   const columns: ColumnPlan[] = pt.columns.map((col) => {
     const fk = pt.foreignKeys.find((f) => f.columns.length === 1 && f.columns[0] === col.name);
     const isPrimaryKey = pk === col.name;
@@ -66,6 +74,12 @@ function buildTablePlan(
     if (col.name === fanOutFk) role = 'fanOutFk';
     else if (col.name === orderedAxis) role = 'ordered';
     else if (col.name === skewValue) role = 'skewValue';
+
+    // Inject only for plain value columns; PK/FK domains are special-cased.
+    const injectValues =
+      !isPrimaryKey && !fk
+        ? (eqLiterals.get(col.name) ?? []).map((l) => typedLiteral(col.pgType, l))
+        : [];
 
     return {
       name: col.name,
@@ -76,6 +90,7 @@ function buildTablePlan(
       nullFraction: 0,
       ...(fk ? { fk: { refTable: fk.refTable, refColumn: fk.refColumns[0] ?? 'id' } } : {}),
       ...(isPrimaryKey ? { isPrimaryKey: true } : {}),
+      ...(injectValues.length ? { injectValues } : {}),
     };
   });
 

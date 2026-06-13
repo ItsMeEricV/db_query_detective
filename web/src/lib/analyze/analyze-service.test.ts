@@ -57,6 +57,18 @@ describe('runAnalysis', () => {
     ).rejects.toBeInstanceOf(AnalyzeValidationError);
   });
 
+  it('seeds rows matching an equality predicate (no degenerate 0-row plan)', async () => {
+    const sessionId = crypto.randomUUID();
+    await seedSchema(sessionId);
+
+    const result = await runAnalysis(
+      { sessionId, query: "SELECT id FROM orders WHERE status = 'paid'" },
+      { scale: 400 },
+    );
+
+    expect(result.modes.some((m) => m.metrics.actualRows > 0)).toBe(true);
+  });
+
   it('rejects a query referencing a column the table does not have', async () => {
     const sessionId = crypto.randomUUID();
     await seedSchema(sessionId);

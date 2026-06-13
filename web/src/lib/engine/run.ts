@@ -106,6 +106,12 @@ function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec[
     const pool = pkPools.get(cp.fk.refTable);
     return domains.fromPool(pool && pool.length ? pool : [1]);
   }
+  const base = baseDomain(cp);
+  if (cp.isPrimaryKey || !cp.injectValues?.length) return base;
+  return withInjected(base, cp.injectValues);
+}
+
+function baseDomain(cp: ColumnPlan): ColumnSpec['domain'] {
   const t = cp.pgType.toLowerCase();
   if (/uuid/.test(t)) return domains.uuid();
   if (/timestamp|date|time/.test(t)) return domains.timestamp();
@@ -113,6 +119,24 @@ function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec[
   if (/serial|int/.test(t)) return domains.int(1);
   if (/numeric|decimal|real|double|float/.test(t)) return domains.numeric();
   return domains.text(`${cp.name}_`);
+}
+
+/** Put injected literals at the head of the domain (index 0 → high_skew's
+ *  zipfian makes the queried value the hot one), then fill with base values. */
+function withInjected(base: ColumnSpec['domain'], injected: unknown[]): ColumnSpec['domain'] {
+  return (dist, ctx) => {
+    const fill = base(
+      { ...dist, cardinality: Math.max(1, dist.cardinality - injected.length) },
+      ctx,
+    );
+    const rest = fill.filter((v) => !injected.some((iv) => sameValue(iv, v)));
+    return [...injected, ...rest].slice(0, Math.max(injected.length, dist.cardinality));
+  };
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  return a === b;
 }
 
 // --- EXPLAIN plan parsing --------------------------------------------------

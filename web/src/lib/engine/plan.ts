@@ -15,6 +15,9 @@ export interface ColumnPlan {
   /** Set when this column is a single-column foreign key. */
   fk?: { refTable: string; refColumn: string };
   isPrimaryKey?: boolean;
+  /** Typed literals from `col = <literal>` predicates, injected into the domain
+   *  so the predicate actually matches rows (head position → high_skew hot value). */
+  injectValues?: unknown[];
 }
 
 export interface TablePlan {

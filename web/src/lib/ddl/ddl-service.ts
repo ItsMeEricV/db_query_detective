@@ -4,6 +4,11 @@ import { prisma } from '@/lib/db';
 import { parseTableDdl } from './parse-ddl';
 import { type ParsedTable, ParsedTableSchema } from './parsed-table';
 
+// session_id is a client-supplied opaque token (placeholder auth in v1). We
+// validate it's a well-formed UUID but accept ANY version — `.uuid()` is
+// version-agnostic, and pinning the version of an externally-provided id buys
+// nothing. IDs *we* generate (Ddl.id, AnalysisRun.id, and Session.id when it
+// isn't client-supplied) are UUIDv7 via Prisma's `@default(uuid(7))`.
 export const SessionIdSchema = z.string().uuid();
 
 export const UpsertDdlInputSchema = z.object({

@@ -25,6 +25,9 @@ export async function parseTableDdl(sql: string): Promise<ParsedTable> {
   // libpg-query types parse() as `any`; cast at this parser boundary only.
   const result = (await parse(sql)) as ParseResult;
 
+  // `stmts` is optional in libpg-query's type and comes back empty for blank or
+  // comment-only input — both cases yield zero CreateStmts below, which we then
+  // reject as "no CREATE TABLE". Flatten each RawStmt to its inner Node.
   const stmts = (result.stmts ?? [])
     .map((raw) => raw.stmt)
     .filter((s): s is Node => s !== undefined);
@@ -135,7 +138,17 @@ function parseColumn(col: ColumnDef): ParsedColumn {
 
 // --- Type names ------------------------------------------------------------
 
-/** Friendly SQL names for the internal type names libpg-query emits. */
+/**
+ * Normalizes the handful of internal `pg_catalog` aliases whose spelling differs
+ * from how the type is normally written. This is deliberately NOT a complete
+ * type list: any type not here falls through to the name libpg-query already
+ * produced, which is itself a valid Postgres type identifier (`text`,
+ * `timestamptz`, `uuid`, `jsonb`, enums, domains, …). So the fallback is
+ * lossless and never throws — at worst it returns a rarely-written internal
+ * alias (e.g. `varbit`) instead of its SQL spelling, which is still a usable
+ * type name. (The engine maps `pgType` → a value generator later and has its
+ * own fallback for types it doesn't special-case.)
+ */
 const INTERNAL_TO_SQL: Record<string, string> = {
   int2: 'smallint',
   int4: 'integer',
@@ -160,6 +173,8 @@ function typeBaseName(typeName: TypeName | undefined): string {
 
 function normalizeType(typeName: TypeName | undefined): string {
   const base = typeBaseName(typeName);
+  // Unknown types pass through as their real parser name — safe by design,
+  // see INTERNAL_TO_SQL.
   const friendly = INTERNAL_TO_SQL[base] ?? base;
   const mods = (typeName?.typmods ?? [])
     .map(typmodToString)

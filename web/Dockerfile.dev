@@ -1,0 +1,33 @@
+FROM node:24-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# --- ORM: Prisma --- (swap block for Drizzle / other — see ../README.md)
+COPY prisma ./prisma/
+COPY prisma.config.ts ./
+# --- /ORM ---
+
+RUN npm cache clean --force && npm install
+
+COPY . .
+
+# --- ORM: Prisma ---
+# Build-time generate validates the schema (dummy DATABASE_URL is fine — it
+# doesn't connect). Prisma 7's `prisma-client` generator outputs to
+# src/generated/prisma, which the `./web:/app` bind mount masks at runtime, so
+# this baked copy is hidden once the container starts — the CMD regenerates it
+# into the mounted tree below. We still run it here to fail the build on a bad
+# schema rather than at container start.
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
+# --- /ORM ---
+
+EXPOSE 3000
+
+# --- ORM: Prisma ---
+# Regenerate the client into the bind-mounted src/generated/prisma (the image's
+# baked copy is masked by the ./web mount), apply pending migrations, then start
+# the dev server.
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npm run dev"]
+# --- /ORM ---

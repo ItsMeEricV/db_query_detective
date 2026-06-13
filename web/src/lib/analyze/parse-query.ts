@@ -26,10 +26,12 @@ export async function parseQuery(sql: string): Promise<QueryShape> {
   const rangeVars = collectRangeVars(fromClause);
   const resolve = makeResolver(rangeVars);
 
+  const { filters, nullTests } = collectPredicates(select.whereClause, resolve);
   return {
     tables: rangeVars.map((rv) => rv.relname ?? '').filter(Boolean),
     joins: collectJoins(fromClause, resolve),
-    filters: collectFilters(select.whereClause, resolve),
+    filters,
+    nullTests,
     orderBy: collectOrderBy(select.sortClause ?? [], resolve),
     groupBy: collectColumnRefs(select.groupClause ?? [], resolve),
   };
@@ -89,20 +91,54 @@ function collectJoins(fromClause: Node[], resolve: Resolver): QueryJoin[] {
   return out;
 }
 
-function collectFilters(where: Node | undefined, resolve: Resolver): QueryFilter[] {
-  if (!where) return [];
-  const out: QueryFilter[] = [];
+/**
+ * Collect comparison predicates and IS NULL tests from a WHERE clause. AND/OR
+ * are both flattened to their leaves: for seeding we only need each predicate's
+ * column to be exercised, and OR over-matches (never produces 0 rows), so the
+ * flatten is safe. BETWEEN → `>=` + `<=`; IN → one `=` per element.
+ */
+function collectPredicates(
+  where: Node | undefined,
+  resolve: Resolver,
+): { filters: QueryFilter[]; nullTests: QueryColumnRef[] } {
+  const filters: QueryFilter[] = [];
+  const nullTests: QueryColumnRef[] = [];
+  if (!where) return { filters, nullTests };
+
   for (const leaf of flattenBoolean(where)) {
+    if ('NullTest' in leaf) {
+      const nt = leaf.NullTest;
+      const fields = nt.arg ? columnRefFields(nt.arg) : undefined;
+      if (nt.nulltesttype === 'IS_NULL' && fields) nullTests.push(resolve(fields));
+      continue;
+    }
     const a = asAExpr(leaf);
-    if (!a) continue;
-    const op = aExprOp(a);
-    if (!op || !COMPARE_OPS.has(op) || !a.lexpr || !a.rexpr) continue;
-    const lhs = columnRefFields(a.lexpr);
-    const literal = aConstLiteral(a.rexpr);
-    if (!lhs || literal === undefined) continue;
-    out.push({ ...resolve(lhs), op: op as CompareOp, literal });
+    const lhs = a?.lexpr ? columnRefFields(a.lexpr) : undefined;
+    if (!a || !lhs || !a.rexpr) continue;
+    const ref = resolve(lhs);
+
+    if (a.kind === 'AEXPR_BETWEEN') {
+      const [lo, hi] = listLiterals(a.rexpr);
+      if (lo !== undefined) filters.push({ ...ref, op: '>=', literal: lo });
+      if (hi !== undefined) filters.push({ ...ref, op: '<=', literal: hi });
+    } else if (a.kind === 'AEXPR_IN') {
+      for (const literal of listLiterals(a.rexpr)) filters.push({ ...ref, op: '=', literal });
+    } else {
+      const op = aExprOp(a);
+      const literal = aConstLiteral(a.rexpr);
+      if (op && COMPARE_OPS.has(op) && literal !== undefined) {
+        filters.push({ ...ref, op: op as CompareOp, literal });
+      }
+    }
   }
-  return out;
+  return { filters, nullTests };
+}
+
+function listLiterals(node: Node): string[] {
+  if (!('List' in node)) return [];
+  return (node.List.items ?? [])
+    .map((item) => aConstLiteral(item))
+    .filter((s): s is string => s !== undefined);
 }
 
 function collectOrderBy(sortClause: Node[], resolve: Resolver): QueryOrderBy[] {

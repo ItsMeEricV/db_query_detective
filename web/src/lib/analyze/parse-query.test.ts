@@ -48,6 +48,37 @@ describe('parseQuery', () => {
     ]);
   });
 
+  it('expands BETWEEN into range filters', async () => {
+    const shape = await parseQuery(
+      "SELECT * FROM orders WHERE created_at BETWEEN '2026-01-01' AND '2026-06-01'",
+    );
+    expect(shape.filters).toEqual([
+      { table: 'orders', column: 'created_at', op: '>=', literal: '2026-01-01' },
+      { table: 'orders', column: 'created_at', op: '<=', literal: '2026-06-01' },
+    ]);
+  });
+
+  it('expands IN into equality filters', async () => {
+    const shape = await parseQuery("SELECT * FROM orders WHERE status IN ('paid', 'shipped')");
+    expect(shape.filters).toEqual([
+      { table: 'orders', column: 'status', op: '=', literal: 'paid' },
+      { table: 'orders', column: 'status', op: '=', literal: 'shipped' },
+    ]);
+  });
+
+  it('captures IS NULL predicates', async () => {
+    const shape = await parseQuery('SELECT * FROM orders WHERE shipped_at IS NULL');
+    expect(shape.nullTests).toEqual([{ table: 'orders', column: 'shipped_at' }]);
+    expect(shape.filters).toEqual([]);
+  });
+
+  it('flattens OR so each branch is exercised (both literals captured)', async () => {
+    const shape = await parseQuery(
+      "SELECT * FROM orders WHERE status = 'paid' OR status = 'refunded'",
+    );
+    expect(shape.filters.map((f) => f.literal).sort()).toEqual(['paid', 'refunded']);
+  });
+
   it('rejects multiple statements (SQL-injection guard)', async () => {
     await expect(parseQuery('SELECT * FROM users; DROP TABLE users')).rejects.toThrow(
       /one SELECT/i,

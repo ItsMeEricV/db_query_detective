@@ -7,6 +7,7 @@ const PARENT_RATIO = 10; // parents get ~1/10 the child scale
 const MIN_PARENT_ROWS = 50;
 const SKEW_VALUE_CARDINALITY = 20;
 const OTHER_CARDINALITY_FRACTION = 0.1;
+const NULL_FRACTION = 0.3; // for columns tested with IS NULL
 const RANGE_OPS = new Set(['<', '<=', '>', '>=']);
 
 export interface DeriveOptions {
@@ -67,6 +68,10 @@ function buildTablePlan(
       eqLiterals.set(f.column, [...(eqLiterals.get(f.column) ?? []), f.literal]);
     }
   }
+  // Columns tested with IS NULL → seed some nulls so the predicate matches.
+  const nullCols = new Set(
+    shape.nullTests.filter((n) => n.table === pt.table).map((n) => n.column),
+  );
 
   const columns: ColumnPlan[] = pt.columns.map((col) => {
     const fk = pt.foreignKeys.find((f) => f.columns.length === 1 && f.columns[0] === col.name);
@@ -89,7 +94,7 @@ function buildTablePlan(
       role,
       cardinality: cardinalityFor(col.pgType, { isPrimaryKey, fk, role }, rowCount, rowCountFor),
       skew: { kind: 'uniform' },
-      nullFraction: 0,
+      nullFraction: !isPrimaryKey && nullCols.has(col.name) ? NULL_FRACTION : 0,
       ...(fk ? { fk: { refTable: fk.refTable, refColumn: fk.refColumns[0] ?? 'id' } } : {}),
       ...(isPrimaryKey ? { isPrimaryKey: true } : {}),
       ...(injectValues.length ? { injectValues } : {}),

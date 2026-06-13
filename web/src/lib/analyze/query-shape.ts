@@ -31,7 +31,11 @@ export interface QueryOrderBy extends QueryColumnRef {
 export interface QueryShape {
   tables: string[];
   joins: QueryJoin[];
+  /** Comparison predicates. `BETWEEN` expands to `>=` + `<=`; `IN (...)` expands
+   *  to one `=` per list element. */
   filters: QueryFilter[];
+  /** Columns tested with `IS NULL` — seeded with a non-zero null fraction. */
+  nullTests: QueryColumnRef[];
   orderBy: QueryOrderBy[];
   groupBy: QueryColumnRef[];
 }

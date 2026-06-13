@@ -107,25 +107,28 @@ function materialize(tp: TablePlan, pkPools: Map<string, unknown[]>): ColumnSpec
     domain: domainFor(cp, pkPools),
     dist: { cardinality: cp.cardinality, skew: cp.skew, nullFraction: cp.nullFraction },
     role: cp.role,
-    unique: cp.isPrimaryKey,
+    // PKs are assigned sequentially; this overrides any role-based sampling.
+    unique: cp.kind.tag === 'pk',
   }));
 }
 
 function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec['domain'] {
-  if (cp.fk) {
-    const pool = pkPools.get(cp.fk.refTable);
+  if (cp.kind.tag === 'fk') {
+    const pool = pkPools.get(cp.kind.refTable);
     if (!pool || pool.length === 0) {
       // Empty pool means the parent seeded no keys (e.g. composite-PK parent we
       // can't reference). Fail loudly rather than fabricate a fake FK value.
       throw new Error(
-        `No key pool for FK ${cp.name} -> ${cp.fk.refTable}; parent has no single-column PK to reference`,
+        `No key pool for FK ${cp.name} -> ${cp.kind.refTable}; parent has no single-column PK to reference`,
       );
     }
     return domains.fromPool(pool);
   }
   const base = baseDomain(cp);
-  if (cp.isPrimaryKey || !cp.injectValues?.length) return base;
-  return withInjected(base, cp.injectValues);
+  if (cp.kind.tag === 'value' && cp.kind.injectValues?.length) {
+    return withInjected(base, cp.kind.injectValues);
+  }
+  return base;
 }
 
 function baseDomain(cp: ColumnPlan): ColumnSpec['domain'] {

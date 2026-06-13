@@ -1,5 +1,5 @@
 import type { ParsedTable } from '@/lib/ddl/parsed-table';
-import type { ColumnPlan, SeedPlan, TablePlan } from '@/lib/engine/plan';
+import type { ColumnKind, ColumnPlan, SeedPlan, TablePlan } from '@/lib/engine/plan';
 import type { ColumnRole } from '@/lib/engine/seeder';
 import type { QueryShape } from './query-shape';
 
@@ -82,11 +82,15 @@ function buildTablePlan(
     else if (col.name === orderedAxis) role = 'ordered';
     else if (col.name === skewValue) role = 'skewValue';
 
-    // Inject only for plain value columns; PK/FK domains are special-cased.
-    const injectValues =
-      !isPrimaryKey && !fk
-        ? (eqLiterals.get(col.name) ?? []).map((l) => typedLiteral(col.pgType, l))
-        : [];
+    let kind: ColumnKind;
+    if (isPrimaryKey) {
+      kind = { tag: 'pk' };
+    } else if (fk) {
+      kind = { tag: 'fk', refTable: fk.refTable, refColumn: fk.refColumns[0] ?? 'id' };
+    } else {
+      const injectValues = (eqLiterals.get(col.name) ?? []).map((l) => typedLiteral(col.pgType, l));
+      kind = injectValues.length ? { tag: 'value', injectValues } : { tag: 'value' };
+    }
 
     return {
       name: col.name,
@@ -95,9 +99,7 @@ function buildTablePlan(
       cardinality: cardinalityFor(col.pgType, { isPrimaryKey, fk, role }, rowCount, rowCountFor),
       skew: { kind: 'uniform' },
       nullFraction: !isPrimaryKey && nullCols.has(col.name) ? NULL_FRACTION : 0,
-      ...(fk ? { fk: { refTable: fk.refTable, refColumn: fk.refColumns[0] ?? 'id' } } : {}),
-      ...(isPrimaryKey ? { isPrimaryKey: true } : {}),
-      ...(injectValues.length ? { injectValues } : {}),
+      kind,
     };
   });
 
@@ -174,7 +176,7 @@ function rangeLiteralFor(
   return typedLiteral(pgType, f.literal);
 }
 
-function typedLiteral(pgType: string, literal: string): unknown {
+function typedLiteral(pgType: string, literal: string): string | number | Date {
   if (/timestamp|date|time/i.test(pgType)) {
     const d = new Date(literal);
     return Number.isNaN(d.getTime()) ? literal : d;

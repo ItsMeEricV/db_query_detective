@@ -39,7 +39,7 @@ describe('deriveSeedPlan', () => {
     expect(id.cardinality).toBe(1000); // PK unique
 
     const fk = ordersPlan.columns.find((c) => c.name === 'user_id')!;
-    expect(fk.fk).toEqual({ refTable: 'users', refColumn: 'id' });
+    expect(fk.kind).toEqual({ tag: 'fk', refTable: 'users', refColumn: 'id' });
     expect(fk.role).toBe('fanOutFk');
     expect(fk.cardinality).toBe(usersPlan.rowCount); // pool = parent keys
   });
@@ -67,7 +67,7 @@ describe('deriveSeedPlan', () => {
     const shape = await parseQuery("SELECT * FROM orders WHERE status = 'paid'");
     const plan = deriveSeedPlan([orders], shape, { scale: 500 });
     const status = plan.tables[0].columns.find((c) => c.name === 'status')!;
-    expect(status.injectValues).toEqual(['paid']);
+    expect(status.kind).toEqual({ tag: 'value', injectValues: ['paid'] });
   });
 
   it('falls back to the primary key as the ordered axis when the query has none', async () => {

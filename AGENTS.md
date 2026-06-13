@@ -51,6 +51,7 @@ If you are an AI assistant (like Gemini or Claude) reading this file:
 
 ### Frontend & SSR
 
+- **This is not the Next.js you know (v16).** This project runs Next.js 16, which has breaking changes — APIs, conventions, and file structure may differ from your training data. Read the relevant guide in `web/node_modules/next/dist/docs/` before writing app code, and heed deprecation notices rather than trusting recalled patterns.
 - **Hydration mismatches: defer non-deterministic client renders.** Libraries that generate IDs on the server (drag-and-drop primitives, accordion / dropdown / dialog components built on `useId`, anything random or time-based) produce hydration mismatches because the SSR-generated value differs from the client-generated one. When rendering these inside a `'use client'` component that is also server-rendered, gate them behind a `mounted` flag.
 
   ```tsx

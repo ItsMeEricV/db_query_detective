@@ -1,0 +1,44 @@
+name: Lint
+
+# Basic TypeScript quality gate for the web app: ESLint + tsc type-check.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24' # matches web/Dockerfile.dev (node:24-alpine)
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      # The Prisma client is generated into src/generated/prisma (gitignored),
+      # so it must be regenerated before tsc sees any code that imports it.
+      # The dummy DATABASE_URL mirrors web/Dockerfile.dev — generate validates
+      # the schema and emits the client without connecting.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck

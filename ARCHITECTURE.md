@@ -153,6 +153,14 @@ join query, a mode is a fixed **combination** across tables (engine enumerates a
 small set; it does not search). Seed is derived from `(schemaSnapshot, query)`
 so re-runs are byte-identical.
 
+**Only applicable modes run.** A mode stresses one axis the query is sensitive
+to, so the engine derives the mode set from the `QueryShape`: `fan_out` only
+with a join FK, `skewed_range` only with a range predicate, `high_skew` only
+with an equality/`GROUP BY` value column, `append_order`/`shuffled` whenever
+there's an ordered axis. A query with no stressable axis falls back to
+`append_order` vs `shuffled` on the primary key. Every returned mode is
+meaningful — no no-op near-duplicates.
+
 ### Engine: seeding model (`SeedPlan` → mode overlay)
 
 ```
@@ -176,12 +184,20 @@ A **mode is an overlay on the `SeedPlan`**, not a separate generator. Mapping:
 | `high_skew`    | zipfian skew override on the value axis column              |
 | `fan_out`      | zipfian + low cardinality on the join FK axis column         |
 
-Joins seed **parents before children** (FK-topological order); a child's FK
-column samples from its parent's generated key pool. The generation kernel
-(deterministic RNG, samplers, `generateRows`, `domains`, lifecycle) is adapted
-from `web/deterministic-seeder.ts` — a sketch that moves into
-`web/src/lib/engine/` at `/analyze` implementation time. `SeedPlan` derivation
-and multi-table orchestration are the parts still to build there.
+**Parent-aware scaling, without artificial alignment.** Joins seed **parents
+before children** (FK-topological order); a child's FK column samples from its
+parent's generated key pool. Parent tables (referenced by an FK) get fewer rows
+than child tables so fan-out is realistic. Crucially, the data must not be "too
+perfect": child FK values are sampled **independently per row** (uniform for
+normal modes, zipfian for `fan_out`), decoupled from the child's row order and
+its ordered-axis value, and each table seeds from an **independent RNG stream**.
+So there is no row-index alignment between tables — order #1 does not map to
+user #1; a parent is referenced by a realistically scattered set of children.
+
+The generation kernel (deterministic RNG, samplers, `generateRows`, `domains`,
+lifecycle) is adapted from `web/deterministic-seeder.ts` — a sketch that moves
+into `web/src/lib/engine/` at `/analyze` implementation time. `SeedPlan`
+derivation and multi-table orchestration are the parts still to build there.
 
 ### Analyze result shape
 

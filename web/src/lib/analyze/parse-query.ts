@@ -1,0 +1,229 @@
+import { parse } from 'libpg-query';
+import type { ParseResult, Node, SelectStmt, RangeVar, A_Expr } from '@pgsql/types';
+import type {
+  CompareOp,
+  QueryColumnRef,
+  QueryFilter,
+  QueryJoin,
+  QueryOrderBy,
+  QueryShape,
+} from './query-shape';
+
+const COMPARE_OPS = new Set<string>(['=', '<>', '<', '<=', '>', '>=']);
+
+/**
+ * Parse a SELECT into a {@link QueryShape} using libpg-query (PG17). v1 supports
+ * single-table queries and simple equi-joins; column refs are resolved to their
+ * real table name (aliases mapped, unqualified resolved when there's one table).
+ */
+export async function parseQuery(sql: string): Promise<QueryShape> {
+  // libpg-query types parse() as `any`; cast at this parser boundary only.
+  const result = (await parse(sql)) as ParseResult;
+
+  const select = singleSelectStmt(result);
+
+  const fromClause = select.fromClause ?? [];
+  const rangeVars = collectRangeVars(fromClause);
+  const resolve = makeResolver(rangeVars);
+
+  const { filters, nullTests } = collectPredicates(select.whereClause, resolve);
+  return {
+    tables: rangeVars.map((rv) => rv.relname ?? '').filter(Boolean),
+    joins: collectJoins(fromClause, resolve),
+    filters,
+    nullTests,
+    orderBy: collectOrderBy(select.sortClause ?? [], resolve),
+    groupBy: collectColumnRefs(select.groupClause ?? [], resolve),
+  };
+}
+
+// --- column-ref resolution -------------------------------------------------
+
+type Resolver = (fields: string[]) => QueryColumnRef;
+
+/** Map each alias/table name to its real table; resolve unqualified columns to
+ *  the sole table when the query has exactly one. */
+function makeResolver(rangeVars: RangeVar[]): Resolver {
+  const aliasToTable = new Map<string, string>();
+  for (const rv of rangeVars) {
+    const table = rv.relname ?? '';
+    if (!table) continue;
+    aliasToTable.set(table, table);
+    if (rv.alias?.aliasname) aliasToTable.set(rv.alias.aliasname, table);
+  }
+  const soleTable = rangeVars.length === 1 ? (rangeVars[0].relname ?? '') : '';
+
+  return (fields) => {
+    if (fields.length >= 2) {
+      const qualifier = fields[fields.length - 2];
+      return { table: aliasToTable.get(qualifier) ?? qualifier, column: fields[fields.length - 1] };
+    }
+    return { table: soleTable, column: fields[0] ?? '' };
+  };
+}
+
+// --- clause collectors -----------------------------------------------------
+
+function collectJoins(fromClause: Node[], resolve: Resolver): QueryJoin[] {
+  const out: QueryJoin[] = [];
+  const visit = (node: Node) => {
+    if (!('JoinExpr' in node)) return;
+    const j = node.JoinExpr;
+    if (j.larg) visit(j.larg);
+    if (j.rarg) visit(j.rarg);
+    for (const leaf of j.quals ? flattenBoolean(j.quals) : []) {
+      const a = asAExpr(leaf);
+      if (!a || aExprOp(a) !== '=' || !a.lexpr || !a.rexpr) continue;
+      const l = columnRefFields(a.lexpr);
+      const r = columnRefFields(a.rexpr);
+      if (!l || !r) continue;
+      const left = resolve(l);
+      const right = resolve(r);
+      out.push({
+        leftTable: left.table,
+        leftColumn: left.column,
+        rightTable: right.table,
+        rightColumn: right.column,
+      });
+    }
+  };
+  for (const node of fromClause) visit(node);
+  return out;
+}
+
+/**
+ * Collect comparison predicates and IS NULL tests from a WHERE clause. AND/OR
+ * are both flattened to their leaves: for seeding we only need each predicate's
+ * column to be exercised, and OR over-matches (never produces 0 rows), so the
+ * flatten is safe. BETWEEN → `>=` + `<=`; IN → one `=` per element.
+ */
+function collectPredicates(
+  where: Node | undefined,
+  resolve: Resolver,
+): { filters: QueryFilter[]; nullTests: QueryColumnRef[] } {
+  const filters: QueryFilter[] = [];
+  const nullTests: QueryColumnRef[] = [];
+  if (!where) return { filters, nullTests };
+
+  for (const leaf of flattenBoolean(where)) {
+    if ('NullTest' in leaf) {
+      const nt = leaf.NullTest;
+      const fields = nt.arg ? columnRefFields(nt.arg) : undefined;
+      if (nt.nulltesttype === 'IS_NULL' && fields) nullTests.push(resolve(fields));
+      continue;
+    }
+    const a = asAExpr(leaf);
+    const lhs = a?.lexpr ? columnRefFields(a.lexpr) : undefined;
+    if (!a || !lhs || !a.rexpr) continue;
+    const ref = resolve(lhs);
+
+    if (a.kind === 'AEXPR_BETWEEN') {
+      const [lo, hi] = listLiterals(a.rexpr);
+      if (lo !== undefined) filters.push({ ...ref, op: '>=', literal: lo });
+      if (hi !== undefined) filters.push({ ...ref, op: '<=', literal: hi });
+    } else if (a.kind === 'AEXPR_IN') {
+      for (const literal of listLiterals(a.rexpr)) filters.push({ ...ref, op: '=', literal });
+    } else {
+      const op = aExprOp(a);
+      const literal = aConstLiteral(a.rexpr);
+      if (op && COMPARE_OPS.has(op) && literal !== undefined) {
+        filters.push({ ...ref, op: op as CompareOp, literal });
+      }
+    }
+  }
+  return { filters, nullTests };
+}
+
+function listLiterals(node: Node): string[] {
+  if (!('List' in node)) return [];
+  return (node.List.items ?? [])
+    .map((item) => aConstLiteral(item))
+    .filter((s): s is string => s !== undefined);
+}
+
+function collectOrderBy(sortClause: Node[], resolve: Resolver): QueryOrderBy[] {
+  const out: QueryOrderBy[] = [];
+  for (const node of sortClause) {
+    if (!('SortBy' in node) || !node.SortBy.node) continue;
+    const fields = columnRefFields(node.SortBy.node);
+    if (!fields) continue;
+    out.push({
+      ...resolve(fields),
+      direction: node.SortBy.sortby_dir === 'SORTBY_DESC' ? 'desc' : 'asc',
+    });
+  }
+  return out;
+}
+
+function collectColumnRefs(nodes: Node[], resolve: Resolver): QueryColumnRef[] {
+  const out: QueryColumnRef[] = [];
+  for (const node of nodes) {
+    const fields = columnRefFields(node);
+    if (fields) out.push(resolve(fields));
+  }
+  return out;
+}
+
+// --- AST helpers -----------------------------------------------------------
+
+/**
+ * Require the input to be exactly ONE SELECT. Rejecting extra statements is a
+ * load-bearing injection guard: the query later flows un-parameterized into
+ * `EXPLAIN ... ${query}`, which runs every `;`-separated statement, so a second
+ * statement would execute arbitrary SQL under the engine's DB role.
+ */
+function singleSelectStmt(result: ParseResult): SelectStmt {
+  const stmts = (result.stmts ?? []).map((raw) => raw.stmt).filter((s): s is Node => !!s);
+  if (stmts.length !== 1) throw new Error('Expected exactly one SELECT statement');
+  const [stmt] = stmts;
+  if (!('SelectStmt' in stmt)) throw new Error('Expected a SELECT statement');
+  return stmt.SelectStmt;
+}
+
+function collectRangeVars(fromClause: Node[]): RangeVar[] {
+  const out: RangeVar[] = [];
+  const visit = (node: Node) => {
+    if ('RangeVar' in node) out.push(node.RangeVar);
+    else if ('JoinExpr' in node) {
+      if (node.JoinExpr.larg) visit(node.JoinExpr.larg);
+      if (node.JoinExpr.rarg) visit(node.JoinExpr.rarg);
+    }
+  };
+  for (const node of fromClause) visit(node);
+  return out;
+}
+
+/** Flatten AND/OR trees to their leaf (non-BoolExpr) nodes. */
+function flattenBoolean(node: Node): Node[] {
+  return 'BoolExpr' in node ? (node.BoolExpr.args ?? []).flatMap(flattenBoolean) : [node];
+}
+
+function asAExpr(node: Node): A_Expr | undefined {
+  return 'A_Expr' in node ? node.A_Expr : undefined;
+}
+
+function aExprOp(a: A_Expr): string | undefined {
+  return svals(a.name).at(-1);
+}
+
+function columnRefFields(node: Node): string[] | undefined {
+  if (!('ColumnRef' in node)) return undefined;
+  return svals(node.ColumnRef.fields);
+}
+
+function aConstLiteral(node: Node): string | undefined {
+  if (!('A_Const' in node)) return undefined;
+  const c = node.A_Const;
+  if (c.isnull) return 'NULL';
+  if (c.sval?.sval !== undefined) return c.sval.sval;
+  if (c.ival?.ival !== undefined) return String(c.ival.ival);
+  if (c.fval?.fval !== undefined) return c.fval.fval;
+  if (c.boolval) return c.boolval.boolval ? 'true' : 'false';
+  return undefined;
+}
+
+function svals(nodes: Node[] | undefined): string[] {
+  return (nodes ?? [])
+    .map((n) => ('String' in n ? n.String.sval : undefined))
+    .filter((s): s is string => !!s);
+}

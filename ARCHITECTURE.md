@@ -7,14 +7,25 @@ This provides the System Mental Map. It tells the agent where things live and ho
 
 ## System Flow
 
-Include a mermaid graph of the entire system flow.
+The logic lives below the transport. HTTP Route Handlers (and, later, an MCP
+server) are thin adapters over a transport-agnostic **application layer** in
+`src/lib`, which orchestrates the deterministic **engine** and Prisma storage.
+The same Zod schemas validate HTTP input and define the MCP tool input later.
 
 ```mermaid
 graph TD
-    A[Client/UI] -->|API Calls| B[Next.js Server Actions]
-    B -->|Query/Command| C[PostgreSQL]
-    B -->|Cache| D[Redis]
+    UI[Hosted web app] -->|fetch /api/*| RH[REST Route Handlers<br/>web/src/app/api]
+    MCP[MCP server — milestone-later] -.->|in-process import| APP
+    RH -->|plain typed args| APP[Application layer<br/>web/src/lib/&lt;feature&gt;]
+    APP -->|Prisma| META[(App Postgres<br/>sessions · ddls · runs)]
+    APP --> ENG[Engine<br/>web/src/lib/engine<br/>seed → ANALYZE → EXPLAIN ANALYZE]
+    ENG -->|pg, schema-per-session| DISP[(Disposable analysis schemas<br/>s_&lt;token&gt;)]
 ```
+
+Both the app metadata and the disposable analysis schemas live in the same
+Postgres instance for v1 (see API Boundaries). The engine reaches Postgres
+through a narrow interface so the same code runs against local Docker or a Neon
+branch.
 
 ## Tech Stack
 
@@ -24,15 +35,24 @@ graph TD
 - **State:** TanStack Query for server state.
 
 ### Backend
-- **Runtime:** Node.js
-- **ORM:** Prisma or Drizzle
-- **Database:** PostgreSQL
+- **Runtime:** Node.js (Next.js Route Handlers; no separate service in v1)
+- **ORM:** Prisma 7 (app metadata: sessions, ddls, analysis runs)
+- **Database:** PostgreSQL 18 + pgvector
+- **Engine DB driver:** node-postgres (`pg`) for the disposable analysis
+  schemas — raw SQL (`COPY`, `EXPLAIN ANALYZE`, `CREATE SCHEMA`), not Prisma.
+- **SQL parsing:** `libpg-query` (the official PG C parser as WASM) for both
+  DDL and the query DML — no custom regex.
+- **Validation/contract:** Zod schemas in `src/lib/<feature>`, shared by the
+  Route Handler (request validation) and the future MCP tool (tool input).
 
 ## Directory Structure Explanations
 
-- `/src/components`: UI-only atoms and molecules. Strictly presentational.
-- `/src/lib`: Core business logic, independent of UI frameworks.
-- `/src/services`: External API wrappers or heavy data processing.
+- `web/src/app/api/`: REST Route Handlers — thin transport adapters only.
+- `web/src/lib/<feature>/`: Application layer — orchestration + Zod schemas,
+  framework-agnostic, the unit the MCP server will import later.
+- `web/src/lib/engine/`: The deterministic engine (seed → `ANALYZE` →
+  `EXPLAIN ANALYZE`). Imports nothing from `next/*`.
+- `web/src/components/`: UI-only atoms and molecules. Strictly presentational.
 
 ### Good Directory Constraint
 "All business logic resides in `/src/lib`. Components are strictly for presentation and must not contain `useEffect` for data fetching."
@@ -44,8 +64,147 @@ graph TD
 
 ## API Boundaries
 
-Describe how services interact.
-- **Example:** "The Mobile app consumes the same GraphQL endpoint as the Web app. No direct DB access for clients."
+- **No business logic in the transport layer.** Route Handlers parse/validate
+  input, call one application-layer function, and serialize its result. All
+  orchestration (Prisma + engine) lives in `src/lib/<feature>`.
+- **The schema is the API, not the URL.** Each operation's input/output is a
+  Zod schema defined once in `src/lib`. The Route Handler and the future MCP
+  tool both adopt it; neither re-derives request/response shapes.
+- **MCP reuses the application layer in-process** (direct import), never by
+  calling the hosted HTTP API — avoids a network hop, a second auth story, and
+  the long-running-`/analyze` blocking problem.
+- **`src/lib/engine` imports nothing from `next/*`.** Keeping it framework-free
+  makes extraction into a shared package mechanical when the MCP server lands.
+- **Two Postgres roles, one instance (v1):** Prisma owns app metadata in the
+  default schema; the engine creates/drops disposable `s_<token>` schemas for
+  seeded analysis data. Clients never touch Postgres directly.
+
+## v1 API Contracts & Storage
+
+Scope: hosted web app only (no MCP), synchronous `/analyze`, **PG17** target
+(matches Neon), single-table modes **plus simple joins**. Candidate-index
+enumeration, `reuseData`/`schemaChanges`, scale/seed knobs, and async jobs are
+all deferred. Auth is a `session_id` UUID header (placeholder).
+
+**v1 operational defaults:**
+
+- **Scale:** ~50k rows/table (well under SPEC's ~100k costing, comfortable
+  inside a generous `maxDuration`); tunable later via the deferred `scale` knob.
+- **Engine connection:** a **direct/unpooled** Postgres connection (session SQL
+  — `CREATE SCHEMA`, `SET search_path`, `COPY` — can choke on Neon's pooled
+  URL). v1 reuses `DATABASE_URL` configured as a direct connection; a separate
+  pooled/direct split would be a new env var (ask before adding).
+- **Disposable schema lifecycle:** `DROP SCHEMA s_<token> CASCADE` in a
+  `finally` after each run — no cross-run reuse in v1.
+- **Validation:** parse failure or `PUT` table-name mismatch → `400`; `/analyze`
+  query referencing a table absent from the session's DDLs, or an FK whose
+  target table is missing → `400` with a structured error.
+- **Pending infra:** the local Docker stack is still PG18; migrating it to PG17
+  (to match the target) is a separate follow-up PR.
+
+### Endpoints (REST Route Handlers, thin)
+
+| Method + path        | Purpose                                                        |
+| -------------------- | ------------------------------------------------------------- |
+| `GET /ddls`          | List this session's tables as `ParsedTable[]`.                |
+| `PUT /ddl/{table}`   | Upsert one table. Body = raw `CREATE TABLE` SQL; parsed name must equal `{table}`. Upsert on `(sessionId, tableName)`. |
+| `POST /analyze`      | Body `{ query }`. Runs all modes synchronously, persists a run, returns `AnalyzeResult`. |
+| `GET /analyze/{runId}` | Read back a stored run (history/reload/share).             |
+
+All take `session_id` (UUID) as a header; the `Session` row is lazily upserted
+on first use. Each operation's input/output is a Zod schema in
+`src/lib/<feature>` (the contract the future MCP tool reuses).
+
+### Prisma models (app metadata; default schema)
+
+```
+Session       id (uuid7, = session_id) · createdAt
+Ddl           id (uuid7) · sessionId → Session · tableName · rawSql
+              · parsed (jsonb: ParsedTable) · updatedAt   — unique (sessionId, tableName)
+AnalysisRun   id (uuid7) · sessionId → Session · query · schemaSnapshot (jsonb: ParsedTable[])
+              · worstMode · results (jsonb: ModeResult[]) · createdAt
+```
+
+Seeded data is **never** persisted here — it lives in disposable `s_<token>`
+schemas, dropped after each run. `AnalysisRun.schemaSnapshot` makes a run
+reproducible even after its DDLs change.
+
+### Parsed DDL shape (`libpg-query@17.x`)
+
+```ts
+ParsedTable = {
+  table: string
+  columns: { name; pgType; nullable; default?; identity? }[]
+  primaryKey: string[]
+  foreignKeys: { columns: string[]; refTable: string; refColumns: string[] }[]
+  uniques: string[][]
+  indexes: { name; columns: string[]; unique: boolean }[]
+}
+```
+
+FKs to not-yet-defined tables are stored, not rejected at PUT time; referential
+completeness is validated at `/analyze` when the schema is built. `CHECK`
+constraints are ignored in v1.
+
+### Modes
+
+`append_order` · `shuffled` · `skewed_range` · `high_skew` · `fan_out`. For a
+join query, a mode is a fixed **combination** across tables (engine enumerates a
+small set; it does not search). Seed is derived from `(schemaSnapshot, query)`
+so re-runs are byte-identical.
+
+### Engine: seeding model (`SeedPlan` → mode overlay)
+
+```
+ParsedTable[] + parsed query
+   │  derive (predicates / ORDER BY / JOINs / GROUP BY → column roles + cardinalities)
+   ▼
+SeedPlan      per table (FK-topological order): ColumnSpec[] + rowCounts + ctx(rangeLiteral)
+              + axis tags (which column each mode stresses)
+   │  × each mode (overlay)
+   ▼
+generateRows → COPY → ANALYZE → EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON)
+```
+
+A **mode is an overlay on the `SeedPlan`**, not a separate generator. Mapping:
+
+| Mode           | Overlay applied                                              |
+| -------------- | ----------------------------------------------------------- |
+| `append_order` | sorted insertion on the ordered axis (physical corr ≈ 1)    |
+| `shuffled`     | shuffled insertion, *same values* (corr ≈ 0)                |
+| `skewed_range` | sorted, range-bias rows to one side of the predicate literal|
+| `high_skew`    | zipfian skew override on the value axis column              |
+| `fan_out`      | zipfian + low cardinality on the join FK axis column         |
+
+Joins seed **parents before children** (FK-topological order); a child's FK
+column samples from its parent's generated key pool. The generation kernel
+(deterministic RNG, samplers, `generateRows`, `domains`, lifecycle) is adapted
+from `web/deterministic-seeder.ts` — a sketch that moves into
+`web/src/lib/engine/` at `/analyze` implementation time. `SeedPlan` derivation
+and multi-table orchestration are the parts still to build there.
+
+### Analyze result shape
+
+```ts
+AnalyzeResult = { runId; query; schemaSnapshot: ParsedTable[]; worstMode: ModeName; modes: ModeResult[] }
+
+ModeResult = {
+  mode: ModeName
+  rowCounts: Record<string, number>          // rows seeded per table
+  plan: unknown                              // VERBATIM EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) array
+  metrics: {                                 // derived from plan[0]; never renames PG's keys inside `plan`
+    planningTimeMs; executionTimeMs
+    rootStartupCost; rootTotalCost           // worstMode = max rootTotalCost (tiebreak executionTimeMs)
+    estimatedRows; actualRows
+  }
+  flags: { code: string; detail?: object }[] // measured facts only — open-ended set, never advice
+}
+```
+
+The engine runs `EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON)`. Note PG
+accumulates per-node actuals **across loops** (per-loop = total ÷ `Actual
+Loops`) and ANALYZE adds profiling overhead worst on cheap nodes — hence cost,
+not timing, drives `worstMode`.
 
 ## Production Deployment Checklist
 

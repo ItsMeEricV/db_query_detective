@@ -2,6 +2,9 @@ import { ZodError } from 'zod';
 import { SessionIdSchema } from '@/lib/ddl/ddl-service';
 import { runAnalysis, AnalyzeValidationError } from '@/lib/analyze/analyze-service';
 
+// Analysis seeds + EXPLAIN-ANALYZEs across modes; allow generous time on Vercel.
+export const maxDuration = 60;
+
 /** POST /api/analyze — body { query }. Runs the query across applicable modes. */
 export async function POST(request: Request) {
   const session = SessionIdSchema.safeParse(request.headers.get('session_id'));

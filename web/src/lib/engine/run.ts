@@ -48,8 +48,18 @@ export async function runModes(params: RunModesParams): Promise<ModeResult[]> {
     }
     return results;
   } finally {
-    await db.dropSchema(schema).catch(() => {});
-    await db.close();
+    // Guard each teardown step so a cleanup failure neither masks the real
+    // error nor skips closing the connection.
+    try {
+      await db.dropSchema(schema);
+    } catch (dropErr) {
+      console.error(`Failed to drop throwaway schema ${schema} (leaked):`, dropErr);
+    }
+    try {
+      await db.close();
+    } catch (closeErr) {
+      console.error('Failed to close engine DB connection:', closeErr);
+    }
   }
 }
 
@@ -104,7 +114,14 @@ function materialize(tp: TablePlan, pkPools: Map<string, unknown[]>): ColumnSpec
 function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec['domain'] {
   if (cp.fk) {
     const pool = pkPools.get(cp.fk.refTable);
-    return domains.fromPool(pool && pool.length ? pool : [1]);
+    if (!pool || pool.length === 0) {
+      // Empty pool means the parent seeded no keys (e.g. composite-PK parent we
+      // can't reference). Fail loudly rather than fabricate a fake FK value.
+      throw new Error(
+        `No key pool for FK ${cp.name} -> ${cp.fk.refTable}; parent has no single-column PK to reference`,
+      );
+    }
+    return domains.fromPool(pool);
   }
   const base = baseDomain(cp);
   if (cp.isPrimaryKey || !cp.injectValues?.length) return base;
@@ -121,8 +138,9 @@ function baseDomain(cp: ColumnPlan): ColumnSpec['domain'] {
   return domains.text(`${cp.name}_`);
 }
 
-/** Put injected literals at the head of the domain (index 0 → high_skew's
- *  zipfian makes the queried value the hot one), then fill with base values. */
+/** Put injected literals at the head of the domain so the predicate matches
+ *  rows; when the column is the high_skew axis, the head is also the zipfian-hot
+ *  value. Then fill the rest with base-domain values. */
 function withInjected(base: ColumnSpec['domain'], injected: unknown[]): ColumnSpec['domain'] {
   return (dist, ctx) => {
     const fill = base(
@@ -157,16 +175,30 @@ interface PgPlanRoot {
   'Execution Time'?: number;
 }
 
-async function explain(db: PgDb, query: string): Promise<unknown> {
+async function explain(db: PgDb, query: string): Promise<unknown[]> {
+  let rows: { 'QUERY PLAN': unknown }[];
   try {
-    const rows = await db.query<{ 'QUERY PLAN': unknown }>(
+    rows = await db.queryReadOnly<{ 'QUERY PLAN': unknown }>(
       `EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) ${query}`,
     );
-    return rows[0]?.['QUERY PLAN'];
   } catch (err) {
-    // Running the user's query failed (missing column, syntax, type mismatch).
-    throw new QueryExecutionError(err instanceof Error ? err.message : 'Query failed to execute');
+    // Only a *bad query* is the client's fault (-> 400). Infra failures
+    // (timeout, connection, internal) must surface as 500, so rethrow those.
+    if (isQueryFault(err)) {
+      throw new QueryExecutionError(err instanceof Error ? err.message : 'Query failed to execute');
+    }
+    throw err;
   }
+  const plan = rows[0]?.['QUERY PLAN'];
+  if (!Array.isArray(plan)) throw new Error('EXPLAIN returned an unexpected plan shape');
+  return plan;
+}
+
+/** True for SQLSTATE classes that mean "the query itself is invalid":
+ *  42 (syntax/access rule), 22 (data exception), 0A (feature not supported). */
+function isQueryFault(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && /^(42|22|0A)/.test(code);
 }
 
 const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
@@ -174,12 +206,17 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
 function metricsFromPlan(plan: unknown): ModeMetrics {
   // pg returns EXPLAIN FORMAT JSON as a parsed array; narrow at this boundary.
   const root = (plan as PgPlanRoot[] | undefined)?.[0];
-  const node = root?.Plan ?? {};
+  const node = root?.Plan;
+  // Total Cost drives worstMode ranking — refuse to fabricate a 0 if the plan
+  // shape is unexpected (PG version drift, malformed output). Fail loud instead.
+  if (!root || !node || typeof node['Total Cost'] !== 'number') {
+    throw new Error('EXPLAIN returned an unexpected plan shape');
+  }
   return {
-    planningTimeMs: num(root?.['Planning Time']),
-    executionTimeMs: num(root?.['Execution Time']),
+    planningTimeMs: num(root['Planning Time']),
+    executionTimeMs: num(root['Execution Time']),
     rootStartupCost: num(node['Startup Cost']),
-    rootTotalCost: num(node['Total Cost']),
+    rootTotalCost: node['Total Cost'],
     estimatedRows: num(node['Plan Rows']),
     actualRows: num(node['Actual Rows']),
   };

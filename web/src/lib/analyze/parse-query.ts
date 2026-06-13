@@ -20,8 +20,7 @@ export async function parseQuery(sql: string): Promise<QueryShape> {
   // libpg-query types parse() as `any`; cast at this parser boundary only.
   const result = (await parse(sql)) as ParseResult;
 
-  const select = findSelectStmt(result);
-  if (!select) throw new Error('Expected a SELECT statement');
+  const select = singleSelectStmt(result);
 
   const fromClause = select.fromClause ?? [];
   const rangeVars = collectRangeVars(fromClause);
@@ -131,12 +130,18 @@ function collectColumnRefs(nodes: Node[], resolve: Resolver): QueryColumnRef[] {
 
 // --- AST helpers -----------------------------------------------------------
 
-function findSelectStmt(result: ParseResult): SelectStmt | undefined {
-  for (const raw of result.stmts ?? []) {
-    const stmt = raw.stmt;
-    if (stmt && 'SelectStmt' in stmt) return stmt.SelectStmt;
-  }
-  return undefined;
+/**
+ * Require the input to be exactly ONE SELECT. Rejecting extra statements is a
+ * load-bearing injection guard: the query later flows un-parameterized into
+ * `EXPLAIN ... ${query}`, which runs every `;`-separated statement, so a second
+ * statement would execute arbitrary SQL under the engine's DB role.
+ */
+function singleSelectStmt(result: ParseResult): SelectStmt {
+  const stmts = (result.stmts ?? []).map((raw) => raw.stmt).filter((s): s is Node => !!s);
+  if (stmts.length !== 1) throw new Error('Expected exactly one SELECT statement');
+  const [stmt] = stmts;
+  if (!('SelectStmt' in stmt)) throw new Error('Expected a SELECT statement');
+  return stmt.SelectStmt;
 }
 
 function collectRangeVars(fromClause: Node[]): RangeVar[] {

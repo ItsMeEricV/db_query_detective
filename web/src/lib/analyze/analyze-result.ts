@@ -28,8 +28,9 @@ export const ModeFlagSchema = z.object({
 export const ModeResultSchema = z.object({
   mode: ModeNameSchema,
   rowCounts: z.record(z.string(), z.number()),
-  /** Verbatim EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) array. */
-  plan: z.unknown(),
+  /** Verbatim EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) output — a
+   *  single-element array; elements kept opaque. */
+  plan: z.array(z.unknown()),
   metrics: ModeMetricsSchema,
   flags: z.array(ModeFlagSchema),
 });

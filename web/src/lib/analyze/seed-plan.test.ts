@@ -69,4 +69,11 @@ describe('deriveSeedPlan', () => {
     const status = plan.tables[0].columns.find((c) => c.name === 'status')!;
     expect(status.injectValues).toEqual(['paid']);
   });
+
+  it('falls back to the primary key as the ordered axis when the query has none', async () => {
+    const shape = await parseQuery('SELECT * FROM users');
+    const plan = deriveSeedPlan([users], shape, { scale: 100 });
+    const id = plan.tables[0].columns.find((c) => c.name === 'id')!;
+    expect(id.role).toBe('ordered');
+  });
 });

@@ -54,8 +54,10 @@ function buildTablePlan(
   const rowCount = rowCountFor(pt.table);
   const pk = pt.primaryKey.length === 1 ? pt.primaryKey[0] : undefined;
 
-  const orderedAxis = pickOrderedAxis(pt.table, shape);
   const fanOutFk = pickFanOutFk(pt, shape);
+  // No explicit ordered axis → fall back to the single-column PK, so append_order
+  // (sorted by PK) and shuffled (random) still differ for axis-less queries.
+  const orderedAxis = pickOrderedAxis(pt.table, shape) ?? (pk && pk !== fanOutFk ? pk : undefined);
   const skewValue = pickSkewValue(pt.table, shape, orderedAxis, fanOutFk);
 
   // Literals from `col = <literal>` predicates, so those predicates match rows.

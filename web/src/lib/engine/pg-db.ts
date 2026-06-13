@@ -11,12 +11,16 @@ export function quoteIdent(name: string): string {
  * (not a pool) because `search_path` is session-scoped — every statement in the
  * run must see the disposable `s_<token>` schema. Always `close()` in a finally.
  */
+/** Per-statement timeout so a pathological user query can't tie up a connection. */
+const STATEMENT_TIMEOUT_MS = 30_000;
+
 export class PgDb {
   private constructor(private readonly client: Client) {}
 
   static async connect(): Promise<PgDb> {
     const client = new Client({ connectionString: getDatabaseUrl() });
     await client.connect();
+    await client.query(`SET statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
     return new PgDb(client);
   }
 
@@ -28,6 +32,21 @@ export class PgDb {
   async query<T = Record<string, unknown>>(sql: string): Promise<T[]> {
     const res = await this.client.query(sql);
     return res.rows as T[];
+  }
+
+  /**
+   * Run a query inside a READ ONLY transaction. Blocks any write/DDL even if a
+   * second statement somehow reaches the driver — defense-in-depth around
+   * running the user's query. Always rolls back.
+   */
+  async queryReadOnly<T = Record<string, unknown>>(sql: string): Promise<T[]> {
+    await this.client.query('BEGIN READ ONLY');
+    try {
+      const res = await this.client.query(sql);
+      return res.rows as T[];
+    } finally {
+      await this.client.query('ROLLBACK').catch(() => {});
+    }
   }
 
   async createSchema(schema: string): Promise<void> {

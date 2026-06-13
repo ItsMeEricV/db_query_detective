@@ -47,4 +47,14 @@ describe('parseQuery', () => {
       { leftTable: 'orders', leftColumn: 'user_id', rightTable: 'users', rightColumn: 'id' },
     ]);
   });
+
+  it('rejects multiple statements (SQL-injection guard)', async () => {
+    await expect(parseQuery('SELECT * FROM users; DROP TABLE users')).rejects.toThrow(
+      /one SELECT/i,
+    );
+  });
+
+  it('rejects a non-SELECT statement', async () => {
+    await expect(parseQuery('DROP TABLE users')).rejects.toThrow(/SELECT/i);
+  });
 });

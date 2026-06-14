@@ -7,6 +7,7 @@ import {
   useClearDdls,
   useDdls,
   usePutDdl,
+  useRecommend,
   useSeedDemo,
 } from '@/lib/client/hooks';
 import { strings } from '@/lib/strings';
@@ -39,6 +40,14 @@ export function DetectiveApp() {
   const analyze = useAnalyze();
   const put = usePutDdl();
   const clear = useClearDdls();
+  const recommend = useRecommend();
+
+  // A fresh analysis invalidates any prior recommendation — drop it so a stale
+  // report never sits under a new run's results.
+  const handleAnalyze = () => {
+    recommend.reset();
+    analyze.mutate(query);
+  };
 
   // Chips come from the last seed response, falling back to the persisted cache
   // on reload (an external store — SSR-safe, no hydration mismatch).
@@ -52,6 +61,7 @@ export function DetectiveApp() {
       await clear.mutateAsync();
       seed.reset();
       analyze.reset();
+      recommend.reset();
       setQuery('');
       setConfirmClear(false);
     } catch {
@@ -101,7 +111,7 @@ export function DetectiveApp() {
           query={query}
           onQueryChange={setQuery}
           demoQueries={demoQueries}
-          onAnalyze={() => analyze.mutate(query)}
+          onAnalyze={handleAnalyze}
           analyzing={analyze.isPending}
           analyzeError={errorText(analyze.error)}
         />
@@ -114,7 +124,15 @@ export function DetectiveApp() {
       </Band>
 
       <Band label={strings.detective.heading}>
-        <DetectivePanel result={analyze.data} />
+        <DetectivePanel
+          result={analyze.data}
+          recommendation={recommend.recommendation}
+          isLoading={recommend.isLoading}
+          error={recommend.error}
+          onAsk={() => {
+            if (analyze.data) recommend.ask(analyze.data.runId);
+          }}
+        />
       </Band>
 
       <ConfirmModal

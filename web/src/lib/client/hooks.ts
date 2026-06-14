@@ -7,6 +7,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCompletion } from '@ai-sdk/react';
 import type { DemoQuery } from '@/lib/analyze/demo-data';
 import { analyze, clearDdls, getDdls, putDdl, seedDemoData } from './api';
 import {
@@ -59,6 +60,25 @@ export function useClearDdls() {
       void qc.invalidateQueries({ queryKey: ddlsKey });
     },
   });
+}
+
+/**
+ * Streams an LLM Recommendation for a stored run. Wraps the AI SDK's
+ * `useCompletion` so the streaming detail stays behind this hooks seam, like
+ * every other server-state hook. `ask(runId)` triggers the call;
+ * `recommendation` fills live as markdown tokens arrive.
+ */
+export function useRecommend() {
+  const { completion, complete, isLoading, error, setCompletion } = useCompletion({
+    api: '/api/recommend',
+  });
+  return {
+    recommendation: completion,
+    ask: (runId: string) => complete('', { body: { runId } }),
+    reset: () => setCompletion(''),
+    isLoading,
+    error,
+  };
 }
 
 /** The persisted demo-query chips, read SSR-safely from the localStorage store. */

@@ -13,7 +13,8 @@ import {
 import { strings } from '@/lib/strings';
 import { Banner } from '@/components/Banner';
 import { Band } from '@/components/Band';
-import { Button } from '@/components/Button';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { WorkspaceMenu } from '@/components/WorkspaceMenu';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { DdlPanel } from '@/components/ddl/DdlPanel';
 import { DmlPanel } from '@/components/dml/DmlPanel';
@@ -71,26 +72,22 @@ export function DetectiveApp() {
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-10 sm:px-6">
-      <Banner />
+      {/* Controls live in a wrapper (not inside Banner, which is
+          overflow-hidden) so the kebab menu can open without being clipped. */}
+      <div className="relative">
+        <Banner />
+        <div className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4">
+          <ThemeToggle />
+          <WorkspaceMenu
+            onLoadDemo={() => seed.mutate()}
+            loadingDemo={seed.isPending}
+            onClearAll={() => setConfirmClear(true)}
+            clearDisabled={(ddls.data?.length ?? 0) === 0 || clear.isPending}
+          />
+        </div>
+      </div>
 
-      <Band
-        label={strings.ddl.heading}
-        hint={strings.ddl.hint}
-        action={
-          <>
-            <Button variant="primary" onClick={() => seed.mutate()} disabled={seed.isPending}>
-              {seed.isPending ? strings.ddl.loading : strings.ddl.loadDemo}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => setConfirmClear(true)}
-              disabled={(ddls.data?.length ?? 0) === 0 || clear.isPending}
-            >
-              {strings.ddl.clearAll}
-            </Button>
-          </>
-        }
-      >
+      <Band label={strings.ddl.heading} hint={strings.ddl.hint}>
         <DdlPanel
           tables={ddls.data ?? []}
           isLoading={ddls.isLoading}

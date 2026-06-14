@@ -7,7 +7,13 @@
    decoration: green = clean/cheap, amber = caution, red = expensive/flagged.
    Brass (--accent) is the lone interactive accent — the desk-lamp glow.
    =========================================================================== */
-:root {
+/* Theme resolution: dark is the default. A manual choice sets data-theme on
+   <html> (specificity 0,1,1) and beats the OS; with no data-theme the media
+   query below follows the OS (the "system" default). The no-flash inline
+   script in layout.tsx applies the stored choice before first paint. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
   --bg: #0b0d11;
   --surface: #13161c;
   --surface-2: #1a1e26;
@@ -27,8 +33,32 @@
   --grid: rgba(255, 255, 255, 0.022);
 }
 
+/* Forced light (manual pick wins over the OS). */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3efe6;
+  --surface: #fbf9f4;
+  --surface-2: #efeadd;
+  --border: #ddd5c5;
+  --border-strong: #c8bfa9;
+  --text: #20232b;
+  --text-muted: #5c6473;
+  --text-faint: #8a8270;
+
+  --accent: #a9741a;
+  --accent-hover: #8f6113;
+
+  --ok: #2f8f4e;
+  --warn: #b3781a;
+  --bad: #c43d36;
+
+  --grid: rgba(0, 0, 0, 0.03);
+}
+
+/* System default: follow the OS only when no explicit choice was made. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
+    color-scheme: light;
     --bg: #f3efe6;
     --surface: #fbf9f4;
     --surface-2: #efeadd;
@@ -204,6 +234,38 @@ body {
   margin: 1.3em 0;
   border: none;
   border-top: 1px solid var(--border);
+}
+/* GFM tables (via remark-gfm): a real bordered table, horizontally scrollable
+   so a wide metrics table never blows out the dossier card. */
+.report table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  font-size: 0.82rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.report th,
+.report td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+.report thead th {
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.report tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-2) 28%, transparent);
+}
+.report td code {
+  white-space: nowrap;
 }
 
 /* Live terminal caret while the report streams in. */

@@ -83,6 +83,15 @@ export const strings = {
     disclaimer:
       'LLM-generated hypotheses drawn from the measured run — verify each against a fresh analysis before applying.',
   },
+  theme: {
+    label: 'Color theme',
+    system: 'System theme',
+    light: 'Light theme',
+    dark: 'Dark theme',
+  },
+  menu: {
+    label: 'Workspace actions',
+  },
   errors: {
     generic: 'Something went wrong. Please try again.',
   },

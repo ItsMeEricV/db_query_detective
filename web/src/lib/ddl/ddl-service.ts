@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { parseTableDdl } from './parse-ddl';
-import { type ParsedTable, ParsedTableSchema } from './parsed-table';
+import { type ParsedTable, ParsedTableSchema, type StoredDdl } from './parsed-table';
 
 // session_id is a client-supplied opaque token (placeholder auth in v1). We
 // validate it's a well-formed UUID but accept ANY version — `.uuid()` is
@@ -60,12 +60,12 @@ export async function upsertDdl(input: UpsertDdlInput): Promise<ParsedTable> {
   return parsed;
 }
 
-/** List a session's tables as parsed structures (GET /ddls). */
-export async function listDdls(sessionId: string): Promise<ParsedTable[]> {
+/** List a session's tables as their stored form — parsed structure + rawSql (GET /ddls). */
+export async function listDdls(sessionId: string): Promise<StoredDdl[]> {
   const id = SessionIdSchema.parse(sessionId);
   const rows = await prisma.ddl.findMany({
     where: { sessionId: id },
     orderBy: { tableName: 'asc' },
   });
-  return rows.map((row) => ParsedTableSchema.parse(row.parsed));
+  return rows.map((row) => ({ ...ParsedTableSchema.parse(row.parsed), rawSql: row.rawSql }));
 }

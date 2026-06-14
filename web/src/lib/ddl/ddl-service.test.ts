@@ -10,11 +10,8 @@ describe('ddl-service', () => {
   it('upserts a DDL and lists it back parsed', async () => {
     const sessionId = newSessionId();
 
-    const stored = await upsertDdl({
-      sessionId,
-      tableName: 'users',
-      sql: 'CREATE TABLE users (id integer PRIMARY KEY, email text NOT NULL)',
-    });
+    const sql = 'CREATE TABLE users (id integer PRIMARY KEY, email text NOT NULL)';
+    const stored = await upsertDdl({ sessionId, tableName: 'users', sql });
     expect(stored.table).toBe('users');
     expect(stored.primaryKey).toEqual(['id']);
 
@@ -22,6 +19,8 @@ describe('ddl-service', () => {
     expect(listed).toHaveLength(1);
     expect(listed[0].table).toBe('users');
     expect(listed[0].columns.map((c) => c.name)).toEqual(['id', 'email']);
+    // GET /ddls carries the raw CREATE TABLE so the UI can pre-fill edits.
+    expect(listed[0].rawSql).toBe(sql);
   });
 
   it('updates the existing row when the same table is PUT again', async () => {
@@ -37,6 +36,7 @@ describe('ddl-service', () => {
     const listed = await listDdls(sessionId);
     expect(listed).toHaveLength(1);
     expect(listed[0].columns.map((c) => c.name)).toEqual(['id', 'name']);
+    expect(listed[0].rawSql).toBe('CREATE TABLE widgets (id integer, name text)');
   });
 
   it('rejects a DDL whose table name does not match the path', async () => {

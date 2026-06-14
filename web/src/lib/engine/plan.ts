@@ -24,6 +24,13 @@ export interface ColumnPlan {
   skew: Skew;
   nullFraction: number;
   kind: ColumnKind;
+  /**
+   * Typed literal this value column is range-compared against (`> 500000`,
+   * `BETWEEN`), independent of whether it's the ordered axis. When set, the
+   * column's domain is centered on it so the predicate actually matches rows.
+   * Only meaningful for `value` columns (PKs/FKs derive their values elsewhere).
+   */
+  rangeLiteral?: unknown;
 }
 
 export interface TablePlan {

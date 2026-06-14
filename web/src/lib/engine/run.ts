@@ -124,11 +124,30 @@ function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec[
     }
     return domains.fromPool(pool);
   }
+  // A value column with a range predicate gets a domain centered on the
+  // literal, so `col > L` / `BETWEEN` actually match rows (PK/FK values come
+  // from their own sources, so they never straddle).
+  if (cp.kind.tag === 'value' && cp.rangeLiteral !== undefined) {
+    return straddleDomain(cp, cp.rangeLiteral);
+  }
   const base = baseDomain(cp);
   if (cp.kind.tag === 'value' && cp.kind.injectValues?.length) {
     return withInjected(base, cp.kind.injectValues);
   }
   return base;
+}
+
+/** Domain centered on a column's range literal. Dates reuse the timestamp
+ *  window; numeric/int types straddle the literal; non-numeric range bounds
+ *  (rare) fall back to the base domain. */
+function straddleDomain(cp: ColumnPlan, literal: unknown): ColumnSpec['domain'] {
+  const t = cp.pgType.toLowerCase();
+  if (literal instanceof Date) {
+    return (dist) => domains.timestamp()(dist, { rangeLiteral: literal });
+  }
+  const n = Number(literal);
+  if (!Number.isFinite(n)) return baseDomain(cp);
+  return domains.straddle(n, /serial|int/.test(t));
 }
 
 function baseDomain(cp: ColumnPlan): ColumnSpec['domain'] {

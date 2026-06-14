@@ -56,6 +56,25 @@ describe('deriveSeedPlan', () => {
     expect(ordersPlan.ctx.rangeLiteral).toBeInstanceOf(Date);
   });
 
+  it('captures a range literal for a filtered value column that is not the ordered axis', async () => {
+    const files = await parseTableDdl(
+      'CREATE TABLE files (id bigint PRIMARY KEY, size_bytes bigint, created_at timestamptz)',
+    );
+    // ORDER BY created_at makes created_at the ordered axis; size_bytes is only
+    // range-filtered, and used to be ignored by the seeder.
+    const shape = await parseQuery(
+      'SELECT * FROM files WHERE size_bytes > 500000 ORDER BY created_at',
+    );
+    const plan = deriveSeedPlan([files], shape, { scale: 500 });
+    const cols = plan.tables[0].columns;
+    const sizeBytes = cols.find((c) => c.name === 'size_bytes')!;
+    const createdAt = cols.find((c) => c.name === 'created_at')!;
+
+    expect(sizeBytes.role).toBeUndefined(); // not the ordered axis
+    expect(sizeBytes.rangeLiteral).toBe(500000);
+    expect(createdAt.role).toBe('ordered');
+  });
+
   it('tags a value column referenced by an equality filter as skewValue', async () => {
     const shape = await parseQuery("SELECT * FROM orders WHERE status = 'paid'");
     const plan = deriveSeedPlan([orders], shape, { scale: 500 });

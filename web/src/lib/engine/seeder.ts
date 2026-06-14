@@ -207,6 +207,21 @@ export const domains = {
       return Array.from({ length: dist.cardinality }, (_, i) => +(min + i * step).toFixed(2));
     };
   },
+  /** Evenly spaced numbers centered on a literal, so a range predicate
+   *  (`> L`, `BETWEEN`) matches ~half the rows. `integer` rounds for int types.
+   *  Half-width is at least the cardinality, keeping rounded ints distinct. */
+  straddle(center: number, integer = false): ColumnSpec['domain'] {
+    return (dist) => {
+      const card = Math.max(2, dist.cardinality);
+      const half = Math.max(Math.abs(center), card);
+      const start = center - half;
+      const step = (2 * half) / (card - 1);
+      return Array.from({ length: card }, (_, i) => {
+        const v = start + i * step;
+        return integer ? Math.round(v) : +v.toFixed(2);
+      });
+    };
+  },
   /** Distinct short strings, e.g. `v0`, `v1`, … */
   text(prefix = 'v'): ColumnSpec['domain'] {
     return (dist) => Array.from({ length: dist.cardinality }, (_, i) => `${prefix}${i}`);

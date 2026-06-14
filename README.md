@@ -27,6 +27,28 @@ runs real `EXPLAIN ANALYZE` (not hypothetical-index estimation) against each. Th
 result is plan shape and cost you can actually believe — plus an LLM that reasons
 over those ground-truth numbers instead of guessing.
 
+## Try the demo
+
+No setup and no database of your own required — open the
+[live demo](https://db-query-detective.vercel.app) and follow along:
+
+1. **Load the demo data.** Click **Load demo data**. This drops in a few example
+   tables (users, projects, sessions…) so you have something to explore right
+   away.
+2. **Pick an example query.** Click one of the example query chips (for instance,
+   "Recent users"). Each one is a ready-made query with a known performance quirk
+   — or you can paste your own query instead.
+3. **Click Analyze.** Under the hood, the app generates several realistic copies
+   of that data, each with a different shape (neatly ordered, randomly shuffled,
+   or heavily lopsided toward a few values), and runs your query against every
+   copy using Postgres's real `EXPLAIN ANALYZE`. That measures exactly how the
+   query behaves on each shape, so you can see which kinds of data make it fast or
+   slow.
+4. **Ask the detective.** Click **Ask the detective**. An AI reads those measured
+   results and explains, in plain language, why the query is slow and how to make
+   it faster (for example, which index to add) — with links to the official
+   Postgres docs.
+
 ## How it works
 
 The defining principle is a hard split between **facts** and **recommendations**:

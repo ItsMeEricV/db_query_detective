@@ -26,7 +26,8 @@ export function formatMs(n: number): string {
 
 /**
  * Estimate-vs-actual ratio as a readable "Nx" multiplier (always ≥ 1), the
- * signal behind the `rows_misestimated` flag. Returns "—" when undefined.
+ * signal behind the `rows_misestimated` flag. Returns "—" when either input is
+ * non-finite or ≤ 0 (no meaningful ratio).
  */
 export function formatEstimateRatio(estimatedRows: number, actualRows: number): string {
   if (!Number.isFinite(estimatedRows) || !Number.isFinite(actualRows)) return '—';

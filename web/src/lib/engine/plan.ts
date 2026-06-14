@@ -1,5 +1,8 @@
 import type { ColumnRole, QueryContext, Skew } from './seeder';
 
+/** A scalar predicate literal, typed per the column's pgType (see `typedLiteral`). */
+export type Literal = string | number | Date;
+
 /**
  * What kind of column this is, as a discriminated union so "PK xor FK xor plain
  * value" is enforced at compile time (and FK refs / injected literals only exist
@@ -8,7 +11,7 @@ import type { ColumnRole, QueryContext, Skew } from './seeder';
 export type ColumnKind =
   | { tag: 'pk' }
   | { tag: 'fk'; refTable: string; refColumn: string }
-  | { tag: 'value'; injectValues?: (string | number | Date)[] };
+  | { tag: 'value'; injectValues?: Literal[] };
 
 /**
  * Declarative generation recipe produced by `deriveSeedPlan` and materialized
@@ -30,7 +33,7 @@ export interface ColumnPlan {
    * column's domain is centered on it so the predicate actually matches rows.
    * Only meaningful for `value` columns (PKs/FKs derive their values elsewhere).
    */
-  rangeLiteral?: unknown;
+  rangeLiteral?: Literal;
 }
 
 export interface TablePlan {

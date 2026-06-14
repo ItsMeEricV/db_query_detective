@@ -20,7 +20,7 @@ export const DemoQuerySchema = z.object({
   title: z.string(),
   description: z.string(),
   /** 1 (simplest) … 4 (most pathological). */
-  complexity: z.number().int(),
+  complexity: z.number().int().min(1).max(4),
   sql: z.string(),
 });
 export type DemoQuery = z.infer<typeof DemoQuerySchema>;

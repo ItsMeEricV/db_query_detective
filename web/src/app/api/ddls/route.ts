@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import { clearSessionData, listDdls, SessionIdSchema } from '@/lib/ddl/ddl-service';
 
 /** GET /api/ddls — list the session's stored tables as ParsedTable[]. */
@@ -18,6 +19,13 @@ export async function DELETE(request: Request) {
     return Response.json({ error: 'A valid session_id header is required' }, { status: 400 });
   }
 
-  await clearSessionData(session.data);
-  return new Response(null, { status: 204 });
+  try {
+    await clearSessionData(session.data);
+    return new Response(null, { status: 204 });
+  } catch (err) {
+    if (err instanceof ZodError) {
+      return Response.json({ error: 'Invalid request' }, { status: 400 });
+    }
+    throw err;
+  }
 }

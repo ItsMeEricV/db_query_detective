@@ -4,9 +4,9 @@ import { strings } from '@/lib/strings';
 import { Tag } from './Tag';
 
 /**
- * Stub for the milestone-3 LLM detective. It already receives the AnalyzeResult,
- * so wiring up the Bedrock-backed narration later is a matter of filling this
- * body — the contract and placement don't change.
+ * Stub for the hosted LLM analysis step (SPEC "LLM Analysis"). It already
+ * receives the AnalyzeResult, so wiring up the LLM recommendations later is a
+ * matter of filling this body — the contract and placement don't change.
  */
 export function DetectivePanel({ result }: { result: AnalyzeResult | undefined }) {
   if (!result) {

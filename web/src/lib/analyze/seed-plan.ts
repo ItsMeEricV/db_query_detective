@@ -1,5 +1,5 @@
 import type { ParsedTable } from '@/lib/ddl/parsed-table';
-import type { ColumnKind, ColumnPlan, SeedPlan, TablePlan } from '@/lib/engine/plan';
+import type { ColumnKind, ColumnPlan, Literal, SeedPlan, TablePlan } from '@/lib/engine/plan';
 import type { ColumnRole } from '@/lib/engine/seeder';
 import type { QueryShape } from './query-shape';
 
@@ -83,7 +83,7 @@ function buildTablePlan(
     else if (col.name === skewValue) role = 'skewValue';
 
     let kind: ColumnKind;
-    let rangeLiteral: unknown;
+    let rangeLiteral: Literal | undefined;
     if (isPrimaryKey) {
       kind = { tag: 'pk' };
     } else if (fk) {
@@ -188,7 +188,7 @@ function rangeLiteralForColumn(
   column: string,
   pgType: string,
   shape: QueryShape,
-): unknown {
+): Literal | undefined {
   const lits = shape.filters
     .filter((f) => f.table === table && f.column === column && RANGE_OPS.has(f.op))
     .map((f) => typedLiteral(pgType, f.literal));
@@ -196,7 +196,7 @@ function rangeLiteralForColumn(
   return centerLiteral(lits);
 }
 
-function centerLiteral(lits: (string | number | Date)[]): unknown {
+function centerLiteral(lits: Literal[]): Literal {
   if (lits.every((l) => typeof l === 'number')) {
     const ns = lits as number[];
     return (Math.min(...ns) + Math.max(...ns)) / 2;
@@ -208,7 +208,7 @@ function centerLiteral(lits: (string | number | Date)[]): unknown {
   return lits[0];
 }
 
-function typedLiteral(pgType: string, literal: string): string | number | Date {
+function typedLiteral(pgType: string, literal: string): Literal {
   if (/timestamp|date|time/i.test(pgType)) {
     const d = new Date(literal);
     return Number.isNaN(d.getTime()) ? literal : d;

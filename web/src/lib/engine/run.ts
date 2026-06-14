@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { PgDb, quoteIdent } from './pg-db';
 import { MODES, generateRows, makeRng, hashSeed, domains, type ColumnSpec } from './seeder';
 import type { ModeName } from './modes';
-import type { ColumnPlan, SeedPlan, TablePlan } from './plan';
+import type { ColumnPlan, Literal, SeedPlan, TablePlan } from './plan';
 import type { ModeFlag, ModeMetrics, ModeResult } from '@/lib/analyze/analyze-result';
 
 export interface RunModesParams {
@@ -140,7 +140,7 @@ function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec[
 /** Domain centered on a column's range literal. Dates reuse the timestamp
  *  window; numeric/int types straddle the literal; non-numeric range bounds
  *  (rare) fall back to the base domain. */
-function straddleDomain(cp: ColumnPlan, literal: unknown): ColumnSpec['domain'] {
+function straddleDomain(cp: ColumnPlan, literal: Literal): ColumnSpec['domain'] {
   const t = cp.pgType.toLowerCase();
   if (literal instanceof Date) {
     return (dist) => domains.timestamp()(dist, { rangeLiteral: literal });

@@ -47,6 +47,18 @@ describe('seeder', () => {
     expect(shuffled).not.toEqual(sorted); // different physical order
   });
 
+  it('straddle centers the domain on a literal so a range predicate matches', () => {
+    const domain = domains.straddle(500000, true)(
+      { cardinality: 100, skew: { kind: 'uniform' }, nullFraction: 0 },
+      {},
+    ) as number[];
+    expect(domain.every((v) => Number.isInteger(v))).toBe(true);
+    expect(Math.min(...domain)).toBeLessThan(500000);
+    expect(Math.max(...domain)).toBeGreaterThan(500000);
+    // ~half the distinct values clear the bound, so `> 500000` matches plenty.
+    expect(domain.filter((v) => v > 500000).length).toBeGreaterThan(20);
+  });
+
   it('high_skew concentrates the value axis on a few hot values', () => {
     const skewCol: ColumnSpec = {
       name: 'status',

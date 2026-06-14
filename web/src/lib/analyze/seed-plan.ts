@@ -1,5 +1,5 @@
 import type { ParsedTable } from '@/lib/ddl/parsed-table';
-import type { ColumnKind, ColumnPlan, SeedPlan, TablePlan } from '@/lib/engine/plan';
+import type { ColumnKind, ColumnPlan, Literal, SeedPlan, TablePlan } from '@/lib/engine/plan';
 import type { ColumnRole } from '@/lib/engine/seeder';
 import type { QueryShape } from './query-shape';
 
@@ -83,6 +83,7 @@ function buildTablePlan(
     else if (col.name === skewValue) role = 'skewValue';
 
     let kind: ColumnKind;
+    let rangeLiteral: Literal | undefined;
     if (isPrimaryKey) {
       kind = { tag: 'pk' };
     } else if (fk) {
@@ -90,6 +91,9 @@ function buildTablePlan(
     } else {
       const injectValues = (eqLiterals.get(col.name) ?? []).map((l) => typedLiteral(col.pgType, l));
       kind = injectValues.length ? { tag: 'value', injectValues } : { tag: 'value' };
+      // A range predicate on a value column positions its domain so the
+      // predicate matches — even when a different column is the ordered axis.
+      rangeLiteral = rangeLiteralForColumn(pt.table, col.name, col.pgType, shape);
     }
 
     return {
@@ -100,6 +104,7 @@ function buildTablePlan(
       skew: { kind: 'uniform' },
       nullFraction: !isPrimaryKey && nullCols.has(col.name) ? NULL_FRACTION : 0,
       kind,
+      ...(rangeLiteral !== undefined ? { rangeLiteral } : {}),
     };
   });
 
@@ -176,7 +181,34 @@ function rangeLiteralFor(
   return typedLiteral(pgType, f.literal);
 }
 
-function typedLiteral(pgType: string, literal: string): string | number | Date {
+/** The typed literal a value column is range-compared against, centered so a
+ *  single bound (`> L`) or a `BETWEEN a AND b` both land inside the domain. */
+function rangeLiteralForColumn(
+  table: string,
+  column: string,
+  pgType: string,
+  shape: QueryShape,
+): Literal | undefined {
+  const lits = shape.filters
+    .filter((f) => f.table === table && f.column === column && RANGE_OPS.has(f.op))
+    .map((f) => typedLiteral(pgType, f.literal));
+  if (lits.length === 0) return undefined;
+  return centerLiteral(lits);
+}
+
+function centerLiteral(lits: Literal[]): Literal {
+  if (lits.every((l) => typeof l === 'number')) {
+    const ns = lits as number[];
+    return (Math.min(...ns) + Math.max(...ns)) / 2;
+  }
+  if (lits.every((l) => l instanceof Date)) {
+    const ms = (lits as Date[]).map((d) => d.getTime());
+    return new Date((Math.min(...ms) + Math.max(...ms)) / 2);
+  }
+  return lits[0];
+}
+
+function typedLiteral(pgType: string, literal: string): Literal {
   if (/timestamp|date|time/i.test(pgType)) {
     const d = new Date(literal);
     return Number.isNaN(d.getTime()) ? literal : d;

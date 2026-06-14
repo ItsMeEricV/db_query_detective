@@ -43,6 +43,27 @@ describe('runModes', () => {
     }
   });
 
+  it('seeds values that satisfy a range predicate on a non-ordered column', async () => {
+    // Regression: a `> literal` filter on a column that is NOT the ordered axis
+    // used to be ignored by the seeder, so the predicate matched zero rows.
+    const sql =
+      'CREATE TABLE files (id bigint PRIMARY KEY, size_bytes bigint, created_at timestamptz)';
+    const files = await parseTableDdl(sql);
+    const query = 'SELECT id FROM files WHERE size_bytes > 500000 ORDER BY created_at';
+    const shape = await parseQuery(query);
+    const seedPlan = deriveSeedPlan([files], shape, { scale: 500 });
+
+    const results = await runModes({
+      createTableSql: new Map([['files', sql]]),
+      seedPlan,
+      query,
+      modes: ['append_order'],
+      seed: 5,
+    });
+
+    expect(results[0].metrics.actualRows).toBeGreaterThan(0);
+  });
+
   it('is deterministic — same inputs yield the same plan costs', async () => {
     const orders = await parseTableDdl(ORDERS_SQL);
     const users = await parseTableDdl(USERS_SQL);

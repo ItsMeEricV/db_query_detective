@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { PgDb, quoteIdent } from './pg-db';
 import { MODES, generateRows, makeRng, hashSeed, domains, type ColumnSpec } from './seeder';
 import type { ModeName } from './modes';
-import type { ColumnPlan, SeedPlan, TablePlan } from './plan';
+import type { ColumnPlan, Literal, SeedPlan, TablePlan } from './plan';
 import type { ModeFlag, ModeMetrics, ModeResult } from '@/lib/analyze/analyze-result';
 
 export interface RunModesParams {
@@ -124,11 +124,30 @@ function domainFor(cp: ColumnPlan, pkPools: Map<string, unknown[]>): ColumnSpec[
     }
     return domains.fromPool(pool);
   }
+  // A value column with a range predicate gets a domain centered on the
+  // literal, so `col > L` / `BETWEEN` actually match rows (PK/FK values come
+  // from their own sources, so they never straddle).
+  if (cp.kind.tag === 'value' && cp.rangeLiteral !== undefined) {
+    return straddleDomain(cp, cp.rangeLiteral);
+  }
   const base = baseDomain(cp);
   if (cp.kind.tag === 'value' && cp.kind.injectValues?.length) {
     return withInjected(base, cp.kind.injectValues);
   }
   return base;
+}
+
+/** Domain centered on a column's range literal. Dates reuse the timestamp
+ *  window; numeric/int types straddle the literal; non-numeric range bounds
+ *  (rare) fall back to the base domain. */
+function straddleDomain(cp: ColumnPlan, literal: Literal): ColumnSpec['domain'] {
+  const t = cp.pgType.toLowerCase();
+  if (literal instanceof Date) {
+    return (dist) => domains.timestamp()(dist, { rangeLiteral: literal });
+  }
+  const n = Number(literal);
+  if (!Number.isFinite(n)) return baseDomain(cp);
+  return domains.straddle(n, /serial|int/.test(t));
 }
 
 function baseDomain(cp: ColumnPlan): ColumnSpec['domain'] {

@@ -37,7 +37,18 @@ export const ParsedTableSchema = z.object({
   indexes: z.array(IndexSchema),
 });
 
+/**
+ * A stored table as returned by `GET /ddls`: the parsed structure plus the raw
+ * `CREATE TABLE` SQL it was created from. The UI renders the structure by
+ * default and uses `rawSql` to pre-fill the edit textarea. `ParsedTable` (and
+ * the analyze `schemaSnapshot`) stay raw-SQL-free — this is the read model.
+ */
+export const StoredDdlSchema = ParsedTableSchema.extend({
+  rawSql: z.string(),
+});
+
 export type ParsedColumn = z.infer<typeof ParsedColumnSchema>;
 export type ForeignKey = z.infer<typeof ForeignKeySchema>;
 export type Index = z.infer<typeof IndexSchema>;
 export type ParsedTable = z.infer<typeof ParsedTableSchema>;
+export type StoredDdl = z.infer<typeof StoredDdlSchema>;

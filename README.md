@@ -47,7 +47,9 @@ No setup and no database of your own required — open the
 4. **Ask the detective.** Click **Ask the detective**. An AI reads those measured
    results and explains, in plain language, why the query is slow and how to make
    it faster (for example, which index to add) — with links to the official
-   Postgres docs.
+   Postgres docs. For the demo this runs on a fast, low-cost model (Anthropic's
+   Claude Haiku); swapping in a more powerful model for higher-quality
+   recommendations is a one-line change (at higher cost).
 
 ## How it works
 

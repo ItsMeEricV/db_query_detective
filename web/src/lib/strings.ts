@@ -60,6 +60,9 @@ export const strings = {
     rowCounts: 'Seeded rows',
     rawPlan: 'Raw EXPLAIN plan',
     worstBadge: 'WORST',
+    zeroRowsNote: 'This query matched no rows — there’s nothing for the modes to differentiate.',
+    flatCostNote:
+      'All modes planned within 1% — at this data scale the distribution didn’t move the cost.',
   },
   detective: {
     heading: 'Detective',

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { AnalyzeResult, ModeResult } from '@/lib/analyze/analyze-result';
 import { modeLabel } from '@/lib/analyze/labels';
+import { summarizeRun } from '@/lib/analyze/analysis-summary';
 import { formatCost, formatEstimateRatio, formatMs, formatRows } from '@/lib/format';
 import { strings } from '@/lib/strings';
 import { FlagBadge } from '../FlagBadge';
@@ -32,6 +33,7 @@ export function AnalysisPanel({
   // Most expensive first — the comparison reads top-down from worst to best.
   const modes = [...result.modes].sort((a, b) => b.metrics.rootTotalCost - a.metrics.rootTotalCost);
   const worst = result.modes.find((m) => m.mode === result.worstMode);
+  const { allZeroRows, flatCost } = summarizeRun(result);
 
   return (
     <div className="space-y-4">
@@ -43,6 +45,13 @@ export function AnalysisPanel({
           {strings.analysis.colCost.toLowerCase()}{' '}
           <span className="font-mono text-ink">{formatCost(worst.metrics.rootTotalCost)}</span>
         </p>
+      )}
+
+      {(allZeroRows || flatCost) && (
+        <div className="space-y-1.5">
+          {allZeroRows && <Note text={strings.analysis.zeroRowsNote} />}
+          {flatCost && <Note text={strings.analysis.flatCostNote} />}
+        </div>
       )}
 
       <div className="scrollbar-thin overflow-x-auto rounded-md border border-line">
@@ -73,6 +82,17 @@ export function AnalysisPanel({
         </table>
       </div>
     </div>
+  );
+}
+
+function Note({ text }: { text: string }) {
+  return (
+    <p className="flex items-start gap-2 rounded-md border border-line bg-surface-2/40 px-3 py-2 text-xs text-muted">
+      <span className="mt-px text-warn" aria-hidden>
+        ⚠
+      </span>
+      {text}
+    </p>
   );
 }
 

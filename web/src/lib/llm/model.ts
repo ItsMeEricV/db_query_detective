@@ -6,10 +6,11 @@ import { getGatewayApiKey } from '@/environment';
  * ask for "the recommendation model"; which provider/model answers is decided
  * here. Swapping providers later is a change to this file alone.
  *
- * `anthropic/claude-opus-4.8` is live on the Vercel AI Gateway (verified against
- * the gateway's model list). See RFC 0001 for the provider choice.
+ * `anthropic/claude-haiku-4.5` is the latest Haiku on the Vercel AI Gateway
+ * (verified live and accessible on the gateway's free tier). See RFC 0001 for
+ * the provider and model choice (and the note on revisiting higher-cost models).
  */
-const RECOMMENDATION_MODEL = 'anthropic/claude-opus-4.8';
+const RECOMMENDATION_MODEL = 'anthropic/claude-haiku-4.5';
 
 /**
  * The configured AI Gateway model for query recommendations. Authentication

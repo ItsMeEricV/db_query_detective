@@ -6,8 +6,15 @@ status: accepted
 
 `SPEC.md` milestone 3 names **AWS Bedrock** as the hosted LLM for query
 recommendations. We are instead using the **Vercel AI Gateway** (model slug
-`anthropic/claude-opus-4.8`) for the hosted web app's recommendation feature.
+`anthropic/claude-haiku-4.5`) for the hosted web app's recommendation feature.
 **This supersedes SPEC.md's Bedrock line.**
+
+> **Model note:** v1 ships on **Haiku** — the latest Haiku is accessible on the
+> gateway's free tier, whereas Sonnet and Opus require paid credits. Recommendation
+> quality is the main lever for this feature, so upgrading to a higher-cost model
+> (e.g. `anthropic/claude-sonnet-4.6` or `anthropic/claude-opus-4.8`) once paid
+> gateway credits are in place is a follow-up worth exploring — a one-line change
+> in `web/src/lib/llm/model.ts`.
 
 ## Why
 

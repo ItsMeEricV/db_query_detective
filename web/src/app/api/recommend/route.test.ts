@@ -30,4 +30,12 @@ describe('POST /api/recommend input validation', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'Body must include a "runId" string' });
   });
+
+  // Past validation: a well-formed but unknown runId loads no run → 404 (before
+  // any LLM call). Mirrors GET /api/analyze/[runId]'s unknown-id behavior.
+  test('returns 404 for a well-formed but unknown runId', async () => {
+    const res = await POST(post(JSON.stringify({ runId: crypto.randomUUID() })));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Run not found' });
+  });
 });

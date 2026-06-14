@@ -1,3 +1,4 @@
+import type { AnalyzeResult } from '@/lib/analyze/analyze-result';
 import { getAnalysisRun } from '@/lib/analyze/analyze-service';
 import { streamRecommendation } from '@/lib/llm/recommend';
 import { logger } from '@/lib/logger';
@@ -26,7 +27,18 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Body must include a "runId" string' }, { status: 400 });
   }
 
-  const run = await getAnalysisRun(runId);
+  let run: AnalyzeResult | null;
+  try {
+    run = await getAnalysisRun(runId);
+  } catch (err) {
+    // DB error, or a stored run whose shape has drifted (Zod parse). Log through
+    // the seam (opaque fields only) — don't let it escape as an unlogged 500.
+    logger.error('recommend.lookup_failed', {
+      runId,
+      message: err instanceof Error ? err.message : 'unknown error',
+    });
+    return Response.json({ error: 'Could not load the analysis run' }, { status: 500 });
+  }
   if (!run) {
     return Response.json({ error: 'Run not found' }, { status: 404 });
   }
@@ -37,5 +49,16 @@ export async function POST(request: Request) {
     modes: run.modes.length,
   });
 
-  return streamRecommendation(run).toUIMessageStreamResponse();
+  // streamText itself is async (its failures surface via the lib's onError and
+  // the stream's error event); guard only the synchronous construction here so a
+  // throw building the prompt/model is logged, not a raw 500.
+  try {
+    return streamRecommendation(run).toUIMessageStreamResponse();
+  } catch (err) {
+    logger.error('recommend.error', {
+      runId,
+      message: err instanceof Error ? err.message : 'unknown error',
+    });
+    return Response.json({ error: 'Could not generate a recommendation' }, { status: 500 });
+  }
 }

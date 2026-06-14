@@ -81,7 +81,11 @@ export function DetectivePanel({
           <div className="mb-3 border-b border-line pb-2 font-mono text-[0.7rem] font-semibold uppercase tracking-[0.28em] text-accent">
             {strings.detective.reportLabel}
           </div>
-          <div className="report" aria-live="polite">
+          {/* Not an aria-live region: the whole Markdown subtree re-renders per
+              streamed token, which would make a screen reader re-announce the
+              entire growing report. The "Investigating…" status line above is
+              the polite progress announcement instead. */}
+          <div className="report">
             <Markdown>{recommendation}</Markdown>
             {isLoading && <span className="report-caret" aria-hidden />}
           </div>

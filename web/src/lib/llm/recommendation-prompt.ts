@@ -50,7 +50,7 @@ export function buildRecommendationPrompt(result: AnalyzeResult): {
       null,
       2,
     )}`,
-    `Worst mode: ${result.worstMode} (the most expensive plan by planner total cost).`,
+    `Worst mode: ${result.worstMode} (the most expensive plan by planner total cost; execution time breaks ties).`,
     `Per-mode measured findings — the engine's ground truth (metrics + flags for every mode):\n${JSON.stringify(
       result.modes.map(modeSummary),
       null,

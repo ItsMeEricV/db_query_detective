@@ -74,7 +74,10 @@ export function useRecommend() {
   });
   return {
     recommendation: completion,
-    ask: (runId: string) => complete('', { body: { runId } }),
+    // Void the returned promise: request failures surface via `error` (rendered
+    // as an alert), so the rejection here is already handled — catch it to avoid
+    // an unhandled-rejection warning on a fire-and-forget call.
+    ask: (runId: string) => void complete('', { body: { runId } }).catch(() => {}),
     reset: () => setCompletion(''),
     isLoading,
     error,

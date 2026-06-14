@@ -94,6 +94,18 @@ describe('buildRecommendationPrompt', () => {
     expect(prompt).not.toContain('NONWORST_PLAN_MARKER');
   });
 
+  test('omits the plan section gracefully when the worst mode is absent from modes[]', () => {
+    // Defensive branch: worstMode always comes from pickWorstMode over the same
+    // modes, so it is present in practice — but if a drifted/partial run names a
+    // worst mode not in modes[], the builder must not emit a dangling/empty plan.
+    const result = { ...fixture(), worstMode: 'high_skew' as const };
+    const { prompt } = buildRecommendationPrompt(result);
+    expect(prompt).toContain('high_skew'); // still named as the worst mode
+    expect(prompt).toContain('append_clean_flag'); // per-mode findings still present
+    expect(prompt).not.toContain('Verbatim EXPLAIN'); // no empty plan section
+    expect(prompt).not.toContain('WORST_PLAN_MARKER');
+  });
+
   test('system prompt forbids inventing metrics and frames advice as re-verifiable hypotheses', () => {
     const { system } = buildRecommendationPrompt(fixture());
     expect(system.toLowerCase()).toContain('ground truth');

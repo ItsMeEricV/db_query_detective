@@ -79,7 +79,7 @@ export const strings = {
     asking: 'Investigating…',
     reportLabel: 'Detective’s report',
     retry: 'Re-run the analysis',
-    error: 'The detective couldn’t finish the analysis. Please try again.',
+    error: 'The detective couldn’t complete its recommendation for this run. Please try again.',
     disclaimer:
       'LLM-generated hypotheses drawn from the measured run — verify each against a fresh analysis before applying.',
   },

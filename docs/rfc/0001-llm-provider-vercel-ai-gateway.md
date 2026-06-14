@@ -33,9 +33,10 @@ several new env vars; the Gateway adds at most one.
   development (declared in `web/src/environment.ts`, `.env.docker.example`, and
   `ARCHITECTURE.md`). When absent — i.e. on Vercel — OIDC authenticates the
   Gateway, so prod/preview need no secret.
-- The provider stays behind a vendor-agnostic `invokeLlm` interface in
-  `web/src/lib/llm/` (per `AGENTS.md`), so swapping back to Bedrock or to a
-  direct Anthropic key later is a change inside that module — model slug + auth —
-  not a change to callers.
+- The provider stays behind a single vendor-aware module
+  `web/src/lib/llm/model.ts` (`recommendationModel()`, per `AGENTS.md`'s
+  vendor-agnostic-call-sites rule), so swapping back to Bedrock or to a direct
+  Anthropic key later is a change inside that module — model slug + auth — not a
+  change to callers.
 - `SPEC.md`'s "AWS Bedrock" wording in milestone 3 is now stale; treat this RFC
   as the source of truth for the provider decision.

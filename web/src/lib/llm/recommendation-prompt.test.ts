@@ -99,4 +99,12 @@ describe('buildRecommendationPrompt', () => {
     expect(system.toLowerCase()).toContain('ground truth');
     expect(system.toLowerCase()).toContain('hypothes');
   });
+
+  test('system prompt targets PostgreSQL 17 and grounds advice in the official docs', () => {
+    const { system } = buildRecommendationPrompt(fixture());
+    // Pin the target version (plan shape is version-specific) and steer the
+    // model to cite primary-source PG17 docs rather than its own recollection.
+    expect(system).toContain('PostgreSQL 17');
+    expect(system).toContain('https://www.postgresql.org/docs/17/');
+  });
 });

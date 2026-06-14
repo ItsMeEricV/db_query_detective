@@ -55,7 +55,7 @@ export function DetectiveApp() {
       setQuery('');
       setConfirmClear(false);
     } catch {
-      // Leave the modal open on failure; the mutation surfaces clear.isError.
+      // Leave the modal open on failure; clear.error is rendered inline below.
     }
   };
 
@@ -124,6 +124,7 @@ export function DetectiveApp() {
         confirmLabel={clear.isPending ? strings.ddl.clearing : strings.ddl.clearConfirm}
         cancelLabel={strings.ddl.cancel}
         busy={clear.isPending}
+        error={errorText(clear.error)}
         onConfirm={handleConfirmClear}
         onCancel={() => setConfirmClear(false)}
       />

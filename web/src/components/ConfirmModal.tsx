@@ -15,6 +15,7 @@ export function ConfirmModal({
   confirmLabel,
   cancelLabel,
   busy = false,
+  error,
   onConfirm,
   onCancel,
 }: {
@@ -24,6 +25,7 @@ export function ConfirmModal({
   confirmLabel: string;
   cancelLabel: string;
   busy?: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -58,6 +60,11 @@ export function ConfirmModal({
           {title}
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
+        {error && (
+          <p className="mt-3 rounded-md border border-bad/30 bg-bad/10 px-3 py-2 font-mono text-xs text-bad">
+            {error}
+          </p>
+        )}
         <div className="mt-6 flex justify-end gap-2">
           <Button autoFocus onClick={onCancel} disabled={busy}>
             {cancelLabel}

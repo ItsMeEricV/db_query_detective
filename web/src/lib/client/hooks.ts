@@ -16,6 +16,13 @@ import {
   setCachedDemoQueries,
   subscribeDemoQueries,
 } from './session';
+import {
+  getThemeServerSnapshot,
+  getThemeSnapshot,
+  setTheme as setThemeStore,
+  subscribeTheme,
+  type Theme,
+} from './theme';
 
 const ddlsKey = ['ddls'] as const;
 
@@ -91,4 +98,11 @@ export function useCachedDemoQueries(): DemoQuery[] {
     getDemoQueriesSnapshot,
     getDemoQueriesServerSnapshot,
   );
+}
+
+/** The active theme choice ('system' | 'light' | 'dark') + a setter, read
+ *  SSR-safely from the localStorage-backed theme store. */
+export function useTheme(): { theme: Theme; setTheme: (theme: Theme) => void } {
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
+  return { theme, setTheme: setThemeStore };
 }

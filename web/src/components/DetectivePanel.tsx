@@ -1,4 +1,5 @@
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { AnalyzeResult } from '@/lib/analyze/analyze-result';
 import { modeLabel } from '@/lib/analyze/labels';
 import { strings } from '@/lib/strings';
@@ -86,7 +87,22 @@ export function DetectivePanel({
               entire growing report. The "Investigating…" status line above is
               the polite progress announcement instead. */}
           <div className="report">
-            <Markdown>{recommendation}</Markdown>
+            <Markdown
+              // remark-gfm renders GFM tables and turns bare URLs into links.
+              remarkPlugins={[remarkGfm]}
+              components={{
+                // Open the cited doc links in a new tab; rel guards the opener.
+                a({ href, children }) {
+                  return (
+                    <a href={href} target="_blank" rel="noreferrer noopener">
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {recommendation}
+            </Markdown>
             {isLoading && <span className="report-caret" aria-hidden />}
           </div>
           <p className="mt-4 flex items-start gap-2 border-t border-line pt-3 text-xs text-faint">

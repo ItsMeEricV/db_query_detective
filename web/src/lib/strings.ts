@@ -92,6 +92,10 @@ export const strings = {
   menu: {
     label: 'Workspace actions',
   },
+  links: {
+    githubUrl: 'https://github.com/ItsMeEricV/db_query_detective',
+    githubLabel: 'View source on GitHub',
+  },
   errors: {
     generic: 'Something went wrong. Please try again.',
   },

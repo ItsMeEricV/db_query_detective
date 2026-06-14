@@ -14,6 +14,7 @@ import { strings } from '@/lib/strings';
 import { Banner } from '@/components/Banner';
 import { Band } from '@/components/Band';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { GitHubLink } from '@/components/GitHubLink';
 import { WorkspaceMenu } from '@/components/WorkspaceMenu';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { DdlPanel } from '@/components/ddl/DdlPanel';
@@ -78,6 +79,7 @@ export function DetectiveApp() {
         <Banner />
         <div className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4">
           <ThemeToggle />
+          <GitHubLink />
           <WorkspaceMenu
             onLoadDemo={() => seed.mutate()}
             loadingDemo={seed.isPending}

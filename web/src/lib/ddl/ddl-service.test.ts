@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { prisma } from '@/lib/db';
 import { upsertDdl, listDdls, clearSessionData, DdlValidationError } from './ddl-service';
 
 // Integration tests — exercise the real Prisma client against the local
@@ -68,5 +69,24 @@ describe('ddl-service', () => {
 
     expect(await listDdls(a)).toEqual([]);
     expect((await listDdls(b)).map((t) => t.table)).toEqual(['keep']);
+  });
+
+  it('clears stored analysis runs as well as DDLs', async () => {
+    const sessionId = newSessionId();
+    // upsertDdl creates the Session row the AnalysisRun FK needs.
+    await upsertDdl({ sessionId, tableName: 't', sql: 'CREATE TABLE t (id integer)' });
+    await prisma.analysisRun.create({
+      data: {
+        sessionId,
+        query: 'SELECT 1',
+        schemaSnapshot: [],
+        worstMode: 'append_order',
+        results: [],
+      },
+    });
+
+    await clearSessionData(sessionId);
+
+    expect(await prisma.analysisRun.count({ where: { sessionId } })).toBe(0);
   });
 });

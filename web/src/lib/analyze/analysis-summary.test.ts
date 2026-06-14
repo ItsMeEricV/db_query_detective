@@ -45,4 +45,8 @@ describe('summarizeRun', () => {
   it('never flags flat cost for a single mode', () => {
     expect(summarizeRun(result([mode(10, 5)])).flatCost).toBe(false);
   });
+
+  it('flags nothing for an empty modes list', () => {
+    expect(summarizeRun(result([]))).toEqual({ allZeroRows: false, flatCost: false });
+  });
 });

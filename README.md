@@ -1,8 +1,8 @@
-# 🕵️‍♀️ db_query_detective
+# 🕵️‍♀️ Database Query Detective
 
 > Manufacture realistic data, run real `EXPLAIN ANALYZE`, read the evidence.
 
-**db_query_detective** takes a developer's schema (DDL) and a query, manufactures
+**Database Query Detective** takes a developer's schema (DDL) and a query, manufactures
 realistic test data across several data-distribution **modes**, runs genuine
 `EXPLAIN ANALYZE` against each on a disposable Postgres schema, and reports
 structured findings — then a hosted LLM turns those measured facts into
@@ -21,7 +21,7 @@ already-running, already-populated database and help you tune it; none go from
 bare DDL to a provisioned, synthetically-seeded instance. So the moment that
 matters most — _"is this index or rewrite actually a good idea before I ship
 it?"_ — is exactly the moment you have nothing realistic to test against.
-db_query_detective fills that gap: it deterministically generates realistic rows
+Database Query Detective fills that gap: it deterministically generates realistic rows
 across several statistical distributions, loads them into a throwaway schema, and
 runs real `EXPLAIN ANALYZE` (not hypothetical-index estimation) against each. The
 result is plan shape and cost you can actually believe — plus an LLM that reasons
@@ -37,10 +37,6 @@ The defining principle is a hard split between **facts** and **recommendations**
 - The **LLM** is the only thing that _decides_. It reads the engine's measured
   facts and produces **Recommendations** (indexes, rewrites, schema changes),
   framed as hypotheses the engine can immediately re-verify by running again.
-
-Keeping judgment out of the engine is what makes the trustworthy core
-deterministic and reproducible: identical `(schema, query, seed)` yields
-byte-identical data and the same plan shape every time.
 
 ### Request flow
 
@@ -63,8 +59,7 @@ Walking a request through the modules:
    Prisma, scoped to the caller's `session_id`.
 2. **Analyze** — `POST /api/analyze` with `{ query }`. `web/src/lib/analyze`
    parses the query, derives a query-driven **SeedPlan**, then for each
-   _applicable_ **mode** (a stress axis: `append_order`, `shuffled`,
-   `skewed_range`, `high_skew`, `fan_out`) the **engine** seeds a disposable
+   _applicable_ [**mode**](#modes) the **engine** seeds a disposable
    `s_<token>` schema, runs `ANALYZE`, and captures
    `EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON)`. It distills each into a
    `ModeResult` (metrics + measured-fact flags), picks the **worst mode** by
@@ -77,8 +72,31 @@ Walking a request through the modules:
    Detective panel. The provider lives behind one vendor-aware module; the route
    stays a thin adapter.
 
-The same Zod schemas that validate HTTP input will define the MCP tool inputs
-when the MCP front door lands (see [Next steps](#next-steps)).
+## Modes
+
+A **mode** stresses one axis a query is sensitive to. Each reshapes the
+_statistical shape_ of the seeded data — what the planner reads from
+[`pg_stats`](https://www.postgresql.org/docs/17/view-pg-stats.html) — using the
+same columns and row counts, so each run isolates a different planner risk. Only
+the modes a query can actually exercise are run (e.g. `fan_out` needs a join FK),
+and the **worst mode** is the one whose plan is most expensive by planner total
+cost.
+
+- **`append_order`** — rows inserted in sorted order, so physical/logical
+  correlation ≈ 1. The production-like baseline, where an index range maps to
+  contiguous heap pages.
+- **`shuffled`** — the _same values_ inserted in random order, so correlation
+  ≈ 0. Exposes queries whose cost hinges on physical clustering — scattered heap
+  fetches, or a sort that no longer comes "for free".
+- **`skewed_range`** — rows weighted to one side of a range predicate's literal,
+  stressing the planner's selectivity estimate. Surfaces row mis-estimates that
+  flip a plan between an index scan and a sequential scan.
+- **`high_skew`** — a Zipfian value distribution (a few very hot keys), the way
+  real categorical and foreign-key columns behave. Stresses equality predicates,
+  `GROUP BY`, and the planner's most-common-values (MCV) handling.
+- **`fan_out`** — a Zipfian foreign key so one parent owns a huge share of the
+  children, modeling join fan-out. Stresses join-cardinality estimates and the
+  hash / merge / nested-loop choice.
 
 ## Tech stack
 

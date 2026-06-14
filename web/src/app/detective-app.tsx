@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   useAnalyze,
   useCachedDemoQueries,
+  useClearDdls,
   useDdls,
   usePutDdl,
   useSeedDemo,
@@ -12,6 +13,7 @@ import { strings } from '@/lib/strings';
 import { Banner } from '@/components/Banner';
 import { Band } from '@/components/Band';
 import { Button } from '@/components/Button';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import { DdlPanel } from '@/components/ddl/DdlPanel';
 import { DmlPanel } from '@/components/dml/DmlPanel';
 import { AnalysisPanel } from '@/components/analysis/AnalysisPanel';
@@ -30,15 +32,32 @@ function errorText(err: unknown): string | null {
 export function DetectiveApp() {
   const [query, setQuery] = useState('');
 
+  const [confirmClear, setConfirmClear] = useState(false);
+
   const ddls = useDdls();
   const seed = useSeedDemo();
   const analyze = useAnalyze();
   const put = usePutDdl();
+  const clear = useClearDdls();
 
   // Chips come from the last seed response, falling back to the persisted cache
   // on reload (an external store — SSR-safe, no hydration mismatch).
   const cachedDemoQueries = useCachedDemoQueries();
   const demoQueries = seed.data?.queries ?? cachedDemoQueries;
+
+  // Clear all → wipe server data, then reset every client-held bit of state back
+  // to the original empty workspace (chips drop via the hook's cache clear).
+  const handleConfirmClear = async () => {
+    try {
+      await clear.mutateAsync();
+      seed.reset();
+      analyze.reset();
+      setQuery('');
+      setConfirmClear(false);
+    } catch {
+      // Leave the modal open on failure; the mutation surfaces clear.isError.
+    }
+  };
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-10 sm:px-6">
@@ -48,9 +67,18 @@ export function DetectiveApp() {
         label={strings.ddl.heading}
         hint={strings.ddl.hint}
         action={
-          <Button variant="primary" onClick={() => seed.mutate()} disabled={seed.isPending}>
-            {seed.isPending ? strings.ddl.loading : strings.ddl.loadDemo}
-          </Button>
+          <>
+            <Button variant="primary" onClick={() => seed.mutate()} disabled={seed.isPending}>
+              {seed.isPending ? strings.ddl.loading : strings.ddl.loadDemo}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => setConfirmClear(true)}
+              disabled={(ddls.data?.length ?? 0) === 0 || clear.isPending}
+            >
+              {strings.ddl.clearAll}
+            </Button>
+          </>
         }
       >
         <DdlPanel
@@ -88,6 +116,17 @@ export function DetectiveApp() {
       <Band label={strings.detective.heading}>
         <DetectivePanel result={analyze.data} />
       </Band>
+
+      <ConfirmModal
+        open={confirmClear}
+        title={strings.ddl.clearTitle}
+        body={strings.ddl.clearBody}
+        confirmLabel={clear.isPending ? strings.ddl.clearing : strings.ddl.clearConfirm}
+        cancelLabel={strings.ddl.cancel}
+        busy={clear.isPending}
+        onConfirm={handleConfirmClear}
+        onCancel={() => setConfirmClear(false)}
+      />
     </main>
   );
 }

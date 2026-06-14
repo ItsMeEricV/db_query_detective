@@ -79,3 +79,9 @@ export async function seedDemoData(): Promise<SeedDemoResponse> {
   if (!res.ok) throw await errorFrom(res);
   return SeedDemoResponseSchema.parse(await res.json());
 }
+
+/** DELETE /api/ddls — clear all of the session's DDLs and analysis runs. */
+export async function clearDdls(): Promise<void> {
+  const res = await fetch('/api/ddls', { method: 'DELETE', headers: headers() });
+  if (!res.ok) throw await errorFrom(res);
+}

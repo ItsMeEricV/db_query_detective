@@ -8,7 +8,7 @@
 import { useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { DemoQuery } from '@/lib/analyze/demo-data';
-import { analyze, getDdls, putDdl, seedDemoData } from './api';
+import { analyze, clearDdls, getDdls, putDdl, seedDemoData } from './api';
 import {
   getDemoQueriesServerSnapshot,
   getDemoQueriesSnapshot,
@@ -44,6 +44,18 @@ export function useSeedDemo() {
     mutationFn: seedDemoData,
     onSuccess: (data) => {
       setCachedDemoQueries(data.queries);
+      void qc.invalidateQueries({ queryKey: ddlsKey });
+    },
+  });
+}
+
+/** Clear the session's DDLs + runs; refreshes the list and drops the demo chips. */
+export function useClearDdls() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: clearDdls,
+    onSuccess: () => {
+      setCachedDemoQueries([]);
       void qc.invalidateQueries({ queryKey: ddlsKey });
     },
   });

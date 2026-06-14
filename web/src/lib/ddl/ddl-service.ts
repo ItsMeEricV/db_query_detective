@@ -69,3 +69,17 @@ export async function listDdls(sessionId: string): Promise<StoredDdl[]> {
   });
   return rows.map((row) => ({ ...ParsedTableSchema.parse(row.parsed), rawSql: row.rawSql }));
 }
+
+/**
+ * Wipe a session's data — every DDL and stored analysis run (the "clear all"
+ * action). The Session row is kept so the same id keeps working with an empty
+ * workspace. Seeded analysis schemas are already dropped after each run, so
+ * nothing else persists.
+ */
+export async function clearSessionData(sessionId: string): Promise<void> {
+  const id = SessionIdSchema.parse(sessionId);
+  await prisma.$transaction([
+    prisma.ddl.deleteMany({ where: { sessionId: id } }),
+    prisma.analysisRun.deleteMany({ where: { sessionId: id } }),
+  ]);
+}

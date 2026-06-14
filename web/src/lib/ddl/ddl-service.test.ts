@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { upsertDdl, listDdls, DdlValidationError } from './ddl-service';
+import { upsertDdl, listDdls, clearSessionData, DdlValidationError } from './ddl-service';
 
 // Integration tests — exercise the real Prisma client against the local
 // dockerized Postgres (DATABASE_URL set by vitest.config.ts). Each test uses a
@@ -55,5 +55,18 @@ describe('ddl-service', () => {
     await upsertDdl({ sessionId: a, tableName: 'ta', sql: 'CREATE TABLE ta (id integer)' });
 
     expect(await listDdls(b)).toEqual([]);
+  });
+
+  it('clears all of a session’s DDLs without touching other sessions', async () => {
+    const a = newSessionId();
+    const b = newSessionId();
+    await upsertDdl({ sessionId: a, tableName: 't1', sql: 'CREATE TABLE t1 (id integer)' });
+    await upsertDdl({ sessionId: a, tableName: 't2', sql: 'CREATE TABLE t2 (id integer)' });
+    await upsertDdl({ sessionId: b, tableName: 'keep', sql: 'CREATE TABLE keep (id integer)' });
+
+    await clearSessionData(a);
+
+    expect(await listDdls(a)).toEqual([]);
+    expect((await listDdls(b)).map((t) => t.table)).toEqual(['keep']);
   });
 });

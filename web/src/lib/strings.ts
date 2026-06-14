@@ -14,6 +14,12 @@ export const strings = {
     hint: 'Data Definition Language — the SQL that defines your tables.',
     loadDemo: 'Load demo data',
     loading: 'Loading schema…',
+    clearAll: 'Clear all',
+    clearing: 'Clearing…',
+    clearTitle: 'Clear everything?',
+    clearBody:
+      'This permanently removes every table and analysis result in this session — including the demo data — and resets the workspace. This can’t be undone.',
+    clearConfirm: 'Clear everything',
     addTable: 'Add table',
     edit: 'Edit',
     save: 'Save table',

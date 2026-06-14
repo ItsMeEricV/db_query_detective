@@ -59,13 +59,21 @@ _Avoid_: job, report
 
 **Measured fact**:
 A flag the engine emits because it *observed* it (`sort_spilled_to_disk`),
-backed by a number it can re-verify. Distinct from **advice** ("add an index on
-`created_at`"), which only the LLM produces — never the engine.
+backed by a number it can re-verify. Distinct from a **Recommendation** ("add an
+index on `created_at`"), which only the LLM produces — never the engine.
+
+**Recommendation**:
+The LLM's output: prescriptive guidance on how to improve a query, produced from
+the engine's **measured facts** for one **analysis run**. The one and only place
+judgment/advice enters the system — the engine never emits it. Canonical term
+both in code and in the UI (the hosted app's "Detective" panel renders the
+recommendations).
+_Avoid_: advice, narration, suggestion
 
 **Candidate index**:
 An index the engine could mechanically **enumerate** from the parsed query and
-**measure** the effect of, but never **selects** — selection is advice, the
-LLM's job. Enumeration is deferred past v1.
+**measure** the effect of, but never **selects** — selection is a
+**recommendation**, the LLM's job. Enumeration is deferred past v1.
 
 **Schema-per-session**:
 The isolation strategy for *disposable* analysis data: `CREATE SCHEMA s_<token>`

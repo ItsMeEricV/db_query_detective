@@ -52,6 +52,11 @@ branch.
   framework-agnostic, the unit the MCP server will import later.
 - `web/src/lib/engine/`: The deterministic engine (seed → `ANALYZE` →
   `EXPLAIN ANALYZE`). Imports nothing from `next/*`.
+- `web/src/lib/llm/`: The recommendation layer — builds a prompt from a run's
+  measured facts and streams the LLM's **Recommendation** (the one place advice
+  enters the system). Vendor-agnostic: the provider lives only in `model.ts`.
+- `web/src/lib/logger.ts`: The single logging seam (structured, console-backed,
+  swap-ready). All server logging routes through it — no bare `console.log`.
 - `web/src/components/`: UI-only atoms and molecules. Strictly presentational.
 
 ### Good Directory Constraint
@@ -235,6 +240,7 @@ Document every required env var with its purpose and how to obtain it. Make sure
 | `DATABASE_URL` | PostgreSQL connection string. Local Docker: a direct connection. On Neon/Vercel the integration sets this to the **pooled** endpoint. | Local: `docker-compose.app.yml`. Prod: Neon→Vercel integration. |
 | `DATABASE_URL_UNPOOLED` | Neon's **direct (unpooled)** connection. **Preferred** by `getDatabaseUrl()` and Prisma migrations when present, because the engine's session SQL (`CREATE SCHEMA`/`COPY`/`EXPLAIN ANALYZE`) and `prisma migrate` cannot run through Neon's pooler. Read server-side only; absent locally (DATABASE_URL is already direct there). No rotation beyond Neon credential rotation. | Set automatically by the Neon→Vercel integration. |
 | `AUTH_SECRET` | Token signing secret | `openssl rand -hex 32` |
+| `VERCEL_AI_GATEWAY_API_KEY` | **Optional.** Vercel AI Gateway API key for the LLM recommendation feature (milestone 3 — see `docs/rfc/0001-llm-provider-vercel-ai-gateway.md`). Read server-side **only** by `web/src/lib/llm/model.ts` (via `getGatewayApiKey()`); never reaches the browser. **Absent on Vercel** (preview + production), where the gateway authenticates via automatic OIDC — present only in local development to exercise the feature in Docker. Rotation: regenerate in the Vercel AI Gateway dashboard. | Vercel dashboard → AI Gateway → API Keys (local dev only). |
 
 **Client-side env vars need a framework public-prefix.** Bundlers strip non-public env vars from client bundles for security, so a Sentry / PostHog / log-collector `enabled` flag that reads `process.env.SENTRY_DSN` from a `'use client'` component (or any browser-bundled module) silently disables in every browser. Use the framework's public-prefix convention: `NEXT_PUBLIC_*` (Next.js), `VITE_*` (Vite), `REACT_APP_*` (CRA), `PUBLIC_*` (Astro / SvelteKit). When the same flag must read on both runtimes, define both (`SENTRY_DSN` for the server, `NEXT_PUBLIC_SENTRY_DSN` for the client) and document the pair.
 

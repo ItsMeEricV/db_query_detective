@@ -75,6 +75,11 @@ services:
       # `localhost` as a redirect URI but accept 127.0.0.1.
       # In production (no WEB_PORT in env), leave unset so Auth.js uses trustHost.
       - AUTH_URL=http://127.0.0.1:${WEB_PORT}
+      # OPTIONAL — Vercel AI Gateway key for the LLM recommendation feature.
+      # Forwarded from .env.docker only to exercise it in local Docker; empty
+      # when unset, which the app treats as absent (→ OIDC on Vercel). See
+      # RFC 0001 / .env.docker.example.
+      - VERCEL_AI_GATEWAY_API_KEY=${VERCEL_AI_GATEWAY_API_KEY:-}
     networks:
       - db_query_detective_shared
     deploy:

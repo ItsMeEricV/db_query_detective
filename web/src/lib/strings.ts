@@ -72,10 +72,16 @@ export const strings = {
   },
   detective: {
     heading: 'Detective',
-    comingSoonTitle: 'LLM analysis coming soon',
-    comingSoonHint:
-      "Next milestone: the detective reads the engine's measured findings and recommends how to improve the query. The wiring lands in a follow-up.",
     emptyHint: 'Run a query and the detective will weigh in on the evidence.',
+    intro:
+      'The detective reads the engine’s measured findings and recommends how to improve the worst-performing query plan.',
+    ask: 'Ask the detective',
+    asking: 'Investigating…',
+    reportLabel: 'Detective’s report',
+    retry: 'Re-run the analysis',
+    error: 'The detective couldn’t complete its recommendation for this run. Please try again.',
+    disclaimer:
+      'LLM-generated hypotheses drawn from the measured run — verify each against a fresh analysis before applying.',
   },
   errors: {
     generic: 'Something went wrong. Please try again.',

@@ -152,3 +152,31 @@ export function getDatabaseUrl(): string {
   }
   return result.data.DATABASE_URL_UNPOOLED ?? result.data.DATABASE_URL;
 }
+
+// Vercel AI Gateway API key for the LLM recommendation feature (see RFC 0001).
+// OPTIONAL by design: set in local development; ABSENT on Vercel, where the
+// gateway provider authenticates via automatic OIDC instead. Server-only secret
+// (no NEXT_PUBLIC_ prefix); read only by web/src/lib/llm/model.ts.
+const LlmEnvSchema = z.object({
+  // Treat an empty string as absent: Docker Compose forwards the host var as
+  // "" when it isn't set, and an empty key must behave identically to unset
+  // (→ OIDC), not trip `.min(1)`.
+  VERCEL_AI_GATEWAY_API_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional(),
+  ),
+});
+
+/**
+ * The Vercel AI Gateway API key when set, else undefined. On Vercel it is
+ * undefined and the gateway provider falls back to OIDC, so this is not an
+ * error there. Server-only — call from the LLM model module, never read
+ * `process.env` directly.
+ */
+export function getGatewayApiKey(): string | undefined {
+  const result = LlmEnvSchema.safeParse(process.env);
+  if (!result.success) {
+    throw new Error(`Invalid server environment: ${result.error.message}`);
+  }
+  return result.data.VERCEL_AI_GATEWAY_API_KEY;
+}

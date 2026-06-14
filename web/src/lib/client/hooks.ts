@@ -5,9 +5,16 @@
  * state. Keeping fetching here (not in components) satisfies the ARCHITECTURE
  * rule: components are presentational and never fetch in a useEffect.
  */
+import { useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { DemoQuery } from '@/lib/analyze/demo-data';
 import { analyze, getDdls, putDdl, seedDemoData } from './api';
-import { setCachedDemoQueries } from './session';
+import {
+  getDemoQueriesServerSnapshot,
+  getDemoQueriesSnapshot,
+  setCachedDemoQueries,
+  subscribeDemoQueries,
+} from './session';
 
 const ddlsKey = ['ddls'] as const;
 
@@ -40,4 +47,13 @@ export function useSeedDemo() {
       void qc.invalidateQueries({ queryKey: ddlsKey });
     },
   });
+}
+
+/** The persisted demo-query chips, read SSR-safely from the localStorage store. */
+export function useCachedDemoQueries(): DemoQuery[] {
+  return useSyncExternalStore(
+    subscribeDemoQueries,
+    getDemoQueriesSnapshot,
+    getDemoQueriesServerSnapshot,
+  );
 }

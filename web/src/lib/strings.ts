@@ -11,6 +11,7 @@ export const strings = {
   },
   ddl: {
     heading: 'DDL',
+    hint: 'Data Definition Language — the SQL that defines your tables.',
     loadDemo: 'Load demo data',
     loading: 'Loading schema…',
     addTable: 'Add table',
@@ -23,6 +24,9 @@ export const strings = {
     viewStructure: 'Structure',
     viewSql: 'SQL',
     selectHint: 'Select a table to inspect its structure.',
+    tableNameLabel: 'Table name',
+    tableNameHint: 'Must match the table named in the CREATE TABLE statement.',
+    createTableLabel: 'CREATE TABLE',
     sqlPlaceholder: 'CREATE TABLE my_table (\n  id bigint PRIMARY KEY,\n  …\n)',
     columnsHeading: 'Columns',
     keysHeading: 'Keys & indexes',
@@ -34,6 +38,7 @@ export const strings = {
   },
   dml: {
     heading: 'DML',
+    hint: 'Data Manipulation Language — the SQL that reads or changes your data.',
     queryLabel: 'Query',
     queryPlaceholder: 'SELECT … FROM … — paste a query to analyze',
     analyze: 'Analyze',

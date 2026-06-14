@@ -6,18 +6,32 @@
  * analyzer.
  */
 
+import { z } from 'zod';
+import { ParsedTableSchema } from '@/lib/ddl/parsed-table';
+
 export interface DemoTable {
   tableName: string;
   sql: string;
 }
 
-export interface DemoQuery {
-  title: string;
-  description: string;
+/** One rung of the demo query ladder. Returned by POST /seed-demo-data and
+ *  shown as a clickable chip in the UI. */
+export const DemoQuerySchema = z.object({
+  title: z.string(),
+  description: z.string(),
   /** 1 (simplest) … 4 (most pathological). */
-  complexity: number;
-  sql: string;
-}
+  complexity: z.number().int(),
+  sql: z.string(),
+});
+export type DemoQuery = z.infer<typeof DemoQuerySchema>;
+
+/** Response contract for POST /seed-demo-data — the parsed seeded tables plus
+ *  the demo query ladder. The client Zod-parses this at the fetch boundary. */
+export const SeedDemoResponseSchema = z.object({
+  tables: z.array(ParsedTableSchema),
+  queries: z.array(DemoQuerySchema),
+});
+export type SeedDemoResponse = z.infer<typeof SeedDemoResponseSchema>;
 
 // Dependency order (parents first) — FKs wire users ← sessions/projects and
 // projects/users ← project_assets.

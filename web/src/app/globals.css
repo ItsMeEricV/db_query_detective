@@ -1,26 +1,100 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+/* ===========================================================================
+   DB Query Detective — "forensic terminal / case dossier" theme.
+   Dark by default (a developer's investigation console); a warm-paper light
+   fallback for prefers-color-scheme: light. Color carries signal, not
+   decoration: green = clean/cheap, amber = caution, red = expensive/flagged.
+   Brass (--accent) is the lone interactive accent — the desk-lamp glow.
+   =========================================================================== */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0d11;
+  --surface: #13161c;
+  --surface-2: #1a1e26;
+  --border: #262b35;
+  --border-strong: #39414f;
+  --text: #e7e9ee;
+  --text-muted: #99a2b2;
+  --text-faint: #626b7b;
+
+  --accent: #d8a657; /* brass */
+  --accent-hover: #ecbe75;
+
+  --ok: #74c98a;
+  --warn: #e0a33a;
+  --bad: #e8615a;
+
+  --grid: rgba(255, 255, 255, 0.022);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f3efe6;
+    --surface: #fbf9f4;
+    --surface-2: #efeadd;
+    --border: #ddd5c5;
+    --border-strong: #c8bfa9;
+    --text: #20232b;
+    --text-muted: #5c6473;
+    --text-faint: #8a8270;
+
+    --accent: #a9741a;
+    --accent-hover: #8f6113;
+
+    --ok: #2f8f4e;
+    --warn: #b3781a;
+    --bad: #c43d36;
+
+    --grid: rgba(0, 0, 0, 0.03);
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+
+  --font-display: var(--font-fraunces);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Faint investigator's grid — atmosphere without noise. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 44px 44px;
+  background-attachment: fixed;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Monospace data surfaces (SQL, plans) get a thin custom scrollbar. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
 }

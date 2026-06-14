@@ -128,19 +128,27 @@ export const isTesting = isTestEnv || isVitestRunning;
 
 const ServerEnvSchema = z.object({
   // Postgres connection string. Local dev: the dockerized Postgres from
-  // .env.docker. Production: the Neon Postgres URL set in Vercel.
+  // .env.docker. Production: the Neon Postgres URL set by the Vercel integration
+  // (this one is the POOLED endpoint — see DATABASE_URL_UNPOOLED below).
   DATABASE_URL: z.string().min(1),
+  // Neon's DIRECT (unpooled) connection, provided by the Neon→Vercel
+  // integration. Preferred when present: the engine's session SQL (CREATE
+  // SCHEMA / SET search_path / COPY / EXPLAIN ANALYZE) and Prisma migrations
+  // cannot run through Neon's pooler. Absent locally — Docker's DATABASE_URL is
+  // already a direct connection, so the fallback below is correct there.
+  DATABASE_URL_UNPOOLED: z.string().min(1).optional(),
 });
 
 /**
- * The Postgres connection string, validated. Server-only — call this from
- * server modules (e.g. the Prisma client) rather than reading
- * `process.env.DATABASE_URL` directly. Throws if unset.
+ * The Postgres connection string to use, validated. Server-only — call this
+ * from server modules (the Prisma client, the engine's pg driver) rather than
+ * reading `process.env` directly. Prefers the direct (unpooled) connection and
+ * falls back to `DATABASE_URL` (direct in local Docker). Throws if neither set.
  */
 export function getDatabaseUrl(): string {
   const result = ServerEnvSchema.safeParse(process.env);
   if (!result.success) {
     throw new Error(`Invalid server environment: ${result.error.message}`);
   }
-  return result.data.DATABASE_URL;
+  return result.data.DATABASE_URL_UNPOOLED ?? result.data.DATABASE_URL;
 }
